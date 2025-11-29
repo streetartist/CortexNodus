@@ -4,3 +4,4 @@ python-socketio
 torch
 torchvision
 litegraph
+gradio

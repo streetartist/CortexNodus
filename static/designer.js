@@ -335,6 +335,9 @@ function EmbeddedSubgraphNode() {
     // Add default input/output nodes
     this.addDefaultNodes();
     
+    // Track last template name so renames can remove old keys from global template map
+    this.__last_template_name = this.properties.template_name || "";
+
     // Set initial title
     this.updateTitle();
 }
@@ -468,13 +471,28 @@ EmbeddedSubgraphNode.prototype.getExtraMenuOptions = function(canvas, options) {
 
 EmbeddedSubgraphNode.prototype.onPropertyChanged = function(name, value) {
     if (name == "template_name") {
+        // If renaming, remove the previous mapping so the list doesn't keep stale keys
+        var prev = this.__last_template_name || "";
+        if (prev && prev !== value && embeddedSubgraphTemplates[prev]) {
+            delete embeddedSubgraphTemplates[prev];
+        }
+        this.__last_template_name = value || "";
         this.updateTitle();
         // Auto-save as template when name changes
         if (value && value.trim() !== "") {
             this.saveTemplate();
         }
+        // Refresh inspector so UI fields reflect the newest values
+        try { refreshInspector(this); } catch(e) {}
     }
 };
+
+// Ensure inspector updates when an inline subgraph node is selected
+EmbeddedSubgraphNode.prototype.onSelected = function() {
+    refreshInspector(this);
+    switchTab('inspector-tab');
+};
+EmbeddedSubgraphNode.prototype.onDeselected = function() { refreshInspector(null); };
 
 EmbeddedSubgraphNode.prototype.updateTitle = function() {
     if (this.properties.template_name) {
@@ -582,6 +600,10 @@ SubgraphNode.prototype.onDblClick = function(e, pos, graphCanvas) {
     graphCanvas.setGraph(this.subgraph);
     updateBreadcrumbs();
 }
+
+// Show properties for SubgraphNode when selected so inspector shows its title
+SubgraphNode.prototype.onSelected = function() { refreshInspector(this); switchTab('inspector-tab'); };
+SubgraphNode.prototype.onDeselected = function() { refreshInspector(null); };
 
 SubgraphNode.prototype.onSerialize = function(o) {
     o.subgraph = this.subgraph.serialize();
@@ -1090,7 +1112,21 @@ function refreshInspector(node){
   titleInput.value = node.title;
   titleInput.style.width = "100%";
   titleInput.addEventListener("change", () => {
-      node.title = titleInput.value;
+      // If editing an embedded subgraph, keep the template_name property in sync
+      try {
+          if (node.type === "graph/embedded_subgraph" || node.constructor && node.constructor.name === 'EmbeddedSubgraphNode') {
+              // Use setProperty so that onPropertyChanged is invoked and template list can update
+              if (typeof node.setProperty === 'function') node.setProperty('template_name', titleInput.value);
+              else node.properties.template_name = titleInput.value;
+          } else {
+              node.title = titleInput.value;
+          }
+      } catch (e) {
+          // Fallback to just setting title
+          node.title = titleInput.value;
+      }
+      // Persist change
+      triggerSaveState();
   });
   
   titleWrap.appendChild(titleLabel);
@@ -1822,6 +1858,10 @@ SubgraphRefNode.prototype.onDblClick = function(e, pos, graphCanvas) {
     graphCanvas.setGraph(this.subgraph);
     updateBreadcrumbs();
 }
+
+// Ensure selecting a reference-based subgraph shows its properties
+SubgraphRefNode.prototype.onSelected = function() { refreshInspector(this); switchTab('inspector-tab'); };
+SubgraphRefNode.prototype.onDeselected = function() { refreshInspector(null); };
 
 SubgraphRefNode.prototype.getExtraMenuOptions = function(canvas, options) {
     var that = this;

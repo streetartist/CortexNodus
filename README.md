@@ -8,6 +8,22 @@ CortexNodus 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台
 - `templates/index.html`：主界面骨架。
 - `static/style.css`：暗色主题 UI 样式。
 - `static/designer.js`：LiteGraph 画布逻辑、节点注册、Inspector、状态轮询。
+
+Subgraph inspector improvements
+--------------------------------
+
+- 点击子图块现在会在右侧 Inspector 中正确显示属性（包括内联模板名template_name / 节点名称）。
+- 在 Inspector 修改内联子图名称会同步更新侧边的“内联子图”列表（Embedded Templates），并自动保存模板。
+- 另外，为兼容性，子图引用节点（Subgraph Ref）和老式 Subgraph 节点现在也会在被选中时自动显示属性面板。
+
+手工验证（浏览器）
+--------------------------------
+
+1. 在画布点击任意子图节点（内联/引用/传统），右侧 Inspector 会显示节点属性。
+2. 修改“Node Name”字段：
+  - 内联子图 (Inline/Embedded Subgraph) 会把名称写入 `template_name` 并同步到侧边栏模板列表。
+  - 引用子图 (Subgraph Ref) 修改名称会尝试加载对应文件名（如存在）用于引用。
+
 - `ml/designer.py`：画布 JSON 解析器，负责将节点拓扑转换为 `DesignerPlan`。
 
 ## 快速开始（Windows PowerShell）
