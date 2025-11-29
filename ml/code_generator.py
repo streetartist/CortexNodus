@@ -707,7 +707,10 @@ def main():
         outputs=gr.Label(num_top_classes=5, label="Predictions"),
         title="CortexNodus Model Inference",
         description=f"Inference using model trained on {dataset_name}",
-        allow_flagging="never"
+        # NOTE: `allow_flagging` is omitted because some Gradio versions
+        # raise TypeError from the BlockContext initializer when unknown
+        # kwargs are passed. Keeping this example compatible with multiple
+        # Gradio releases by not emitting `allow_flagging`.
     )
     
     print(f"Starting Gradio app on port {{args.port}}...")
