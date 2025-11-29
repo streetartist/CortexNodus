@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-cn">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GraphLab Designer</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/litegraph.js/build/litegraph.min.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="title">GraphLab Designer</div>
+      <div class="actions">
+        <button id="btn-load">加载(服务端)</button>
+        <button id="btn-save">保存(服务端)</button>
+        <button id="btn-upload">导入JSON</button>
+        <button id="btn-download">导出JSON</button>
+        <button id="btn-run">运行训练</button>
+        <button id="btn-gen">生成脚本</button>
+        <button id="btn-autolayout">自动布局</button>
+        <input type="file" id="file-input" style="display:none" accept=".json">
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="palette">
+        <h3>节点库</h3>
+        <div class="group">数据</div>
+        <button class="node" data-type="MNIST">MNIST</button>
+        <button class="node" data-type="Fashion-MNIST">Fashion-MNIST</button>
+        <button class="node" data-type="CIFAR-10">CIFAR-10</button>
+        <button class="node" data-type="WikiText-2">WikiText-2</button>
+        <button class="node" data-type="WikiText-103">WikiText-103</button>
+        <button class="node" data-type="PennTreebank">Penn Treebank</button>
+        <button class="node" data-type="CustomData">Custom Data</button>
+        
+        <div class="group">卷积与池化</div>
+        <button class="node" data-type="Conv2D">Conv2D</button>
+        <button class="node" data-type="ConvTranspose2d">ConvTranspose2d</button>
+        <button class="node" data-type="MaxPool">MaxPool</button>
+        <button class="node" data-type="AvgPool">AvgPool</button>
+        <button class="node" data-type="AdaptiveAvgPool">AdaptiveAvgPool</button>
+        <button class="node" data-type="Upsample">Upsample</button>
+        <button class="node" data-type="PixelShuffle">PixelShuffle</button>
+        <button class="node" data-type="ZeroPad2d">ZeroPad2d</button>
+        
+        <div class="group">激活函数</div>
+        <button class="node" data-type="ReLU">ReLU</button>
+        <button class="node" data-type="LeakyReLU">LeakyReLU</button>
+        <button class="node" data-type="PReLU">PReLU</button>
+        <button class="node" data-type="ELU">ELU</button>
+        <button class="node" data-type="GELU">GELU</button>
+        <button class="node" data-type="SiLU">SiLU</button>
+        <button class="node" data-type="Hardswish">Hardswish</button>
+        <button class="node" data-type="Hardsigmoid">Hardsigmoid</button>
+        <button class="node" data-type="Sigmoid">Sigmoid</button>
+        <button class="node" data-type="Tanh">Tanh</button>
+        <button class="node" data-type="Softplus">Softplus</button>
+        <button class="node" data-type="Softmax">Softmax</button>
+        <button class="node" data-type="LogSoftmax">LogSoftmax</button>
+        
+        <div class="group">核心层</div>
+        <button class="node" data-type="Dense">Dense</button>
+        <button class="node" data-type="Flatten">Flatten</button>
+        <button class="node" data-type="Dropout">Dropout</button>
+        <button class="node" data-type="Dropout2d">Dropout2d</button>
+        <button class="node" data-type="AlphaDropout">AlphaDropout</button>
+        <button class="node" data-type="BatchNorm2d">BatchNorm2d</button>
+        <button class="node" data-type="BatchNorm1d">BatchNorm1d</button>
+        <button class="node" data-type="InstanceNorm2d">InstanceNorm2d</button>
+        <button class="node" data-type="GroupNorm">GroupNorm</button>
+        <button class="node" data-type="LayerNorm">LayerNorm</button>
+        <button class="node" data-type="Identity">Identity</button>
+        
+        <div class="group">Transformer & NLP</div>
+        <button class="node" data-type="Embedding">Embedding</button>
+        <button class="node" data-type="PositionalEncoding">Positional Encoding</button>
+        <button class="node" data-type="GPTBlock">GPT Block</button>
+        <button class="node" data-type="TransformerEncoderLayer">Transformer Encoder Layer</button>
+        <button class="node" data-type="TransformerEncoder">Transformer Encoder</button>
+        <button class="node" data-type="TransformerDecoderLayer">Transformer Decoder Layer</button>
+        <button class="node" data-type="TransformerDecoder">Transformer Decoder</button>
+        <button class="node" data-type="MultiheadAttention">Multihead Attention</button>
+        <button class="node" data-type="Linear">Linear</button>
+        
+        <div class="group">合并操作</div>
+        <button class="node" data-type="Add">Add</button>
+        <button class="node" data-type="Multiply">Multiply</button>
+        <button class="node" data-type="Concat">Concat</button>
+        
+        <div class="group">自定义</div>
+        <button class="node" data-type="CustomLayer">Custom Layer</button>
+
+        <div class="group">嵌入式子图</div>
+        <div id="embedded-subgraph-list" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;"></div>
+        <button id="btn-new-embedded-subgraph" style="width: 100%;">+ 新建嵌入式子图</button>
+
+
+        <div class="group">文件子图</div>
+        <div id="subgraph-list" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;"></div>
+        <button id="btn-new-subgraph" style="width: 100%;">+ 新建子图</button>
+
+        <div class="group">训练</div>
+        <button class="node" data-type="Loss">Training Goal</button>
+      </aside>
+
+      <section class="canvas-wrap">
+        <div id="breadcrumbs" class="breadcrumbs" style="display: none;">
+          <span id="breadcrumb-path">Root</span>
+        </div>
+        <canvas id="graphcanvas" width="1000" height="700"></canvas>
+      </section>
+
+      <aside class="inspector">
+        <h3>属性</h3>
+        <div id="inspector"></div>
+        <h3>状态</h3>
+        <pre id="status"></pre>
+      </aside>
+    </main>
+
+    <div id="run-modal" class="modal">
+      <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>训练运行中</h3>
+        <div id="modal-status-text">正在初始化...</div>
+        <pre id="modal-log"></pre>
+      </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/static/designer.js"></script>
+  </body>
+</html>

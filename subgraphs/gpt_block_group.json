@@ -1,0 +1,249 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "graph/input",
+      "pos": [
+        50,
+        150
+      ],
+      "size": {
+        "0": 140,
+        "1": 60
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "links": [
+            1
+          ],
+          "name": "out",
+          "type": "any"
+        }
+      ],
+      "properties": {
+        "name": "input",
+        "type": "any"
+      }
+    },
+    {
+      "id": 6,
+      "type": "graph/output",
+      "pos": [
+        1170,
+        150
+      ],
+      "size": {
+        "0": 140,
+        "1": 60
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "link": 5,
+          "name": "in",
+          "type": "any"
+        }
+      ],
+      "properties": {
+        "name": "output",
+        "type": "any"
+      }
+    },
+    {
+      "id": 4,
+      "type": "Dropout",
+      "pos": [
+        710,
+        150
+      ],
+      "size": {
+        "0": 180,
+        "1": 60
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "link": 3,
+          "name": "in",
+          "type": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "links": [
+            4
+          ],
+          "name": "out",
+          "type": "any"
+        }
+      ],
+      "properties": {
+        "p": 0.1
+      }
+    },
+    {
+      "id": 5,
+      "type": "LayerNorm",
+      "pos": [
+        940,
+        150
+      ],
+      "size": {
+        "0": 180,
+        "1": 60
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "link": 4,
+          "name": "in",
+          "type": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "links": [
+            5
+          ],
+          "name": "out",
+          "type": "any"
+        }
+      ],
+      "title": "Layer Normalization",
+      "properties": {}
+    },
+    {
+      "id": 3,
+      "type": "GPTBlock",
+      "pos": [
+        480,
+        149
+      ],
+      "size": {
+        "0": 180,
+        "1": 60
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "link": 2,
+          "name": "in",
+          "type": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "links": [
+            3
+          ],
+          "name": "out",
+          "type": "any"
+        }
+      ],
+      "title": "GPT Block 2",
+      "properties": {
+        "d_model": 256,
+        "nhead": 8,
+        "dim_feedforward": 1024,
+        "dropout": 0.1
+      }
+    },
+    {
+      "id": 2,
+      "type": "GPTBlock",
+      "pos": [
+        250,
+        148
+      ],
+      "size": {
+        "0": 180,
+        "1": 60
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "link": 1,
+          "name": "in",
+          "type": "any"
+        }
+      ],
+      "outputs": [
+        {
+          "links": [
+            2
+          ],
+          "name": "out",
+          "type": "any"
+        }
+      ],
+      "title": "GPT Block 1",
+      "properties": {
+        "d_model": 256,
+        "nhead": 8,
+        "dim_feedforward": 1024,
+        "dropout": 0.1
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "any"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "any"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "any"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      0,
+      "any"
+    ],
+    [
+      5,
+      5,
+      0,
+      6,
+      0,
+      "any"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

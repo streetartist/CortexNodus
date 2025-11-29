@@ -1,0 +1,221 @@
+{
+  "version": 0.4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MNIST",
+      "pos": [50, 50],
+      "size": [140, 30],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "data",
+          "type": "image",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "batch_size": 64
+      }
+    },
+    {
+      "id": 2,
+      "type": "graph/subgraph",
+      "pos": [250, 50],
+      "size": [140, 60],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "properties": {
+        "subgraph": {
+          "version": 0.4,
+          "nodes": [
+            {
+              "id": 10,
+              "type": "graph/input",
+              "pos": [50, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 0,
+              "mode": 0,
+              "outputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "links": [
+                    10
+                  ]
+                }
+              ],
+              "properties": {
+                  "name": "in",
+                  "type": "image"
+              }
+            },
+            {
+              "id": 11,
+              "type": "Conv2D",
+              "pos": [250, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 1,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 10
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [
+                    11
+                  ]
+                }
+              ],
+              "properties": {
+                "out_channels": 32,
+                "kernel_size": 3,
+                "stride": 1,
+                "padding": 1
+              }
+            },
+            {
+              "id": 12,
+              "type": "ReLU",
+              "pos": [450, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 2,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 11
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [
+                    12
+                  ]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 14,
+              "type": "Dense",
+              "pos": [650, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 3,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 12
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [
+                    14
+                  ]
+                }
+              ],
+              "properties": {
+                "out_features": 10
+              }
+            },
+            {
+              "id": 13,
+              "type": "graph/output",
+              "pos": [850, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 4,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "link": 14
+                }
+              ],
+              "properties": {
+                  "name": "out",
+                  "type": "image"
+              }
+            }
+          ],
+          "links": [
+            [10, 10, 0, 11, 0, "image"],
+            [11, 11, 0, 12, 0, "image"],
+            [12, 12, 0, 14, 0, "image"],
+            [14, 14, 0, 13, 0, "image"]
+          ],
+          "groups": [],
+          "config": {}
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "Loss",
+      "pos": [450, 50],
+      "size": [140, 30],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 2
+        }
+      ],
+      "properties": {
+        "kind": "CrossEntropy",
+        "optimizer": "Adam",
+        "lr": 0.001,
+        "epochs": 10
+      }
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "image"],
+    [2, 2, 0, 3, 0, "image"]
+  ],
+  "groups": [],
+  "config": {}
+}

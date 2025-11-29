@@ -1,0 +1,887 @@
+{
+  "version": 0.4,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MNIST",
+      "pos": [50, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "data",
+          "type": "image",
+          "links": [1]
+        }
+      ],
+      "properties": {
+        "batch_size": 64
+      }
+    },
+    {
+      "id": 2,
+      "type": "Conv2D",
+      "pos": [250, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [2]
+        }
+      ],
+      "properties": {
+        "out_channels": 32,
+        "kernel_size": 3,
+        "stride": 2
+      }
+    },
+    {
+      "id": 3,
+      "type": "BatchNorm2d",
+      "pos": [450, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [3]
+        }
+      ],
+      "properties": {}
+    },
+    {
+      "id": 4,
+      "type": "SiLU",
+      "pos": [650, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [4]
+        }
+      ],
+      "properties": {}
+    },
+    {
+      "id": 5,
+      "type": "graph/subgraph",
+      "title": "MBConv Block 1",
+      "pos": [850, 200],
+      "size": [140, 60],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [5]
+        }
+      ],
+      "properties": {
+        "subgraph": {
+          "version": 0.4,
+          "nodes": [
+            {
+              "id": 10,
+              "type": "graph/input",
+              "pos": [50, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 0,
+              "mode": 0,
+              "outputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "links": [10]
+                }
+              ],
+              "properties": {
+                "name": "in",
+                "type": "image"
+              }
+            },
+            {
+              "id": 11,
+              "type": "Conv2D",
+              "pos": [250, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 1,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 10
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [11]
+                }
+              ],
+              "properties": {
+                "out_channels": 96,
+                "kernel_size": 1
+              }
+            },
+            {
+              "id": 12,
+              "type": "BatchNorm2d",
+              "pos": [450, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 2,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 11
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [12]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 13,
+              "type": "SiLU",
+              "pos": [650, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 3,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 12
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [13]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 14,
+              "type": "Conv2D",
+              "pos": [850, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 4,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 13
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [14]
+                }
+              ],
+              "properties": {
+                "kernel_size": 3,
+                "stride": 1,
+                "groups": 96
+              }
+            },
+            {
+              "id": 15,
+              "type": "BatchNorm2d",
+              "pos": [1050, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 5,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 14
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [15]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 16,
+              "type": "SiLU",
+              "pos": [1250, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 6,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 15
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [16]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 17,
+              "type": "Conv2D",
+              "pos": [1450, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 7,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 16
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [17]
+                }
+              ],
+              "properties": {
+                "out_channels": 16,
+                "kernel_size": 1
+              }
+            },
+            {
+              "id": 18,
+              "type": "BatchNorm2d",
+              "pos": [1650, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 8,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 17
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [18]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 19,
+              "type": "Add",
+              "pos": [1850, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 9,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in1",
+                  "type": "image",
+                  "link": 18
+                },
+                {
+                  "name": "in2",
+                  "type": "image",
+                  "link": 10
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [19]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 20,
+              "type": "graph/output",
+              "pos": [2050, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 10,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "link": 19
+                }
+              ],
+              "properties": {
+                "name": "out",
+                "type": "image"
+              }
+            }
+          ],
+          "links": [
+            [10, 10, 0, 11, 0, "image"],
+            [11, 11, 0, 12, 0, "image"],
+            [12, 12, 0, 13, 0, "image"],
+            [13, 13, 0, 14, 0, "image"],
+            [14, 14, 0, 15, 0, "image"],
+            [15, 15, 0, 16, 0, "image"],
+            [16, 16, 0, 17, 0, "image"],
+            [17, 17, 0, 18, 0, "image"],
+            [18, 18, 0, 19, 0, "image"],
+            [19, 10, 0, 19, 1, "image"],
+            [20, 19, 0, 20, 0, "image"]
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "graph/subgraph",
+      "title": "MBConv Block 2",
+      "pos": [1050, 200],
+      "size": [140, 60],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [6]
+        }
+      ],
+      "properties": {
+        "subgraph": {
+          "version": 0.4,
+          "nodes": [
+            {
+              "id": 21,
+              "type": "graph/input",
+              "pos": [50, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 0,
+              "mode": 0,
+              "outputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "links": [21]
+                }
+              ],
+              "properties": {
+                "name": "in",
+                "type": "image"
+              }
+            },
+            {
+              "id": 22,
+              "type": "Conv2D",
+              "pos": [250, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 1,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 21
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [22]
+                }
+              ],
+              "properties": {
+                "out_channels": 96,
+                "kernel_size": 1
+              }
+            },
+            {
+              "id": 23,
+              "type": "BatchNorm2d",
+              "pos": [450, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 2,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 22
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [23]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 24,
+              "type": "SiLU",
+              "pos": [650, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 3,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 23
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [24]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 25,
+              "type": "Conv2D",
+              "pos": [850, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 4,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 24
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [25]
+                }
+              ],
+              "properties": {
+                "kernel_size": 3,
+                "stride": 2,
+                "groups": 96
+              }
+            },
+            {
+              "id": 26,
+              "type": "BatchNorm2d",
+              "pos": [1050, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 5,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 25
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [26]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 27,
+              "type": "SiLU",
+              "pos": [1250, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 6,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 26
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [27]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 28,
+              "type": "Conv2D",
+              "pos": [1450, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 7,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 27
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [28]
+                }
+              ],
+              "properties": {
+                "out_channels": 24,
+                "kernel_size": 1
+              }
+            },
+            {
+              "id": 29,
+              "type": "BatchNorm2d",
+              "pos": [1650, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 8,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "in",
+                  "type": "image",
+                  "link": 28
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "links": [29]
+                }
+              ],
+              "properties": {}
+            },
+            {
+              "id": 30,
+              "type": "graph/output",
+              "pos": [1850, 50],
+              "size": [140, 30],
+              "flags": {},
+              "order": 9,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "out",
+                  "type": "image",
+                  "link": 29
+                }
+              ],
+              "properties": {
+                "name": "out",
+                "type": "image"
+              }
+            }
+          ],
+          "links": [
+            [21, 21, 0, 22, 0, "image"],
+            [22, 22, 0, 23, 0, "image"],
+            [23, 23, 0, 24, 0, "image"],
+            [24, 24, 0, 25, 0, "image"],
+            [25, 25, 0, 26, 0, "image"],
+            [26, 26, 0, 27, 0, "image"],
+            [27, 27, 0, 28, 0, "image"],
+            [28, 28, 0, 29, 0, "image"],
+            [29, 29, 0, 30, 0, "image"]
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "Conv2D",
+      "pos": [1250, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [7]
+        }
+      ],
+      "properties": {
+        "out_channels": 1280,
+        "kernel_size": 1
+      }
+    },
+    {
+      "id": 8,
+      "type": "BatchNorm2d",
+      "pos": [1450, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [8]
+        }
+      ],
+      "properties": {}
+    },
+    {
+      "id": 9,
+      "type": "SiLU",
+      "pos": [1650, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 8
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [9]
+        }
+      ],
+      "properties": {}
+    },
+    {
+      "id": 10,
+      "type": "AdaptiveAvgPool",
+      "pos": [1850, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [10]
+        }
+      ],
+      "properties": {
+        "output_size": 1
+      }
+    },
+    {
+      "id": 11,
+      "type": "Flatten",
+      "pos": [2050, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 10
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [11]
+        }
+      ],
+      "properties": {}
+    },
+    {
+      "id": 12,
+      "type": "Dense",
+      "pos": [2250, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "image",
+          "links": [12]
+        }
+      ],
+      "properties": {
+        "out_features": 10
+      }
+    },
+    {
+      "id": 13,
+      "type": "Loss",
+      "pos": [2450, 200],
+      "size": [140, 30],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "in",
+          "type": "image",
+          "link": 12
+        }
+      ],
+      "properties": {
+        "kind": "CrossEntropy",
+        "optimizer": "Adam",
+        "lr": 0.001,
+        "epochs": 5,
+        "target": "Label"
+      }
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "image"],
+    [2, 2, 0, 3, 0, "image"],
+    [3, 3, 0, 4, 0, "image"],
+    [4, 4, 0, 5, 0, "image"],
+    [5, 5, 0, 6, 0, "image"],
+    [6, 6, 0, 7, 0, "image"],
+    [7, 7, 0, 8, 0, "image"],
+    [8, 8, 0, 9, 0, "image"],
+    [9, 9, 0, 10, 0, "image"],
+    [10, 10, 0, 11, 0, "image"],
+    [11, 11, 0, 12, 0, "image"],
+    [12, 12, 0, 13, 0, "image"]
+  ]
+}
