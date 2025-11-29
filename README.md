@@ -1,6 +1,6 @@
-# GraphLab Designer
+# CortexNodus
 
-GraphLab Designer 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台，可通过拖拽方式构建完整的深度学习流水线（数据 → 模型 → 训练 → 评估），并自动在后端生成 PyTorch 代码并执行训练。目前已内置 MNIST、Fashion-MNIST、CIFAR-10 等常见图片数据集，能够图形化训练一个数字识别模型，也可以扩展为更多同等复杂度的网络。
+CortexNodus 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台，可通过拖拽方式构建完整的深度学习流水线（数据 → 模型 → 训练 → 评估），并自动在后端生成 PyTorch 代码并执行训练。目前已内置 MNIST、Fashion-MNIST、CIFAR-10 等常见图片数据集，能够图形化训练一个数字识别模型，也可以扩展为更多同等复杂度的网络。
 
 ## 目录结构
 
