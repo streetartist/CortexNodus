@@ -7,6 +7,23 @@ const graphStack = []; // Stack of {graph: LGraph, node: SubgraphNode}
 const socket = io();
 let logHistory = [];
 
+// File management
+let currentFileName = null;
+let isSaved = true;
+
+// Listen for graph changes
+graph.onNodeAdded = markAsUnsaved;
+graph.onNodeRemoved = markAsUnsaved;
+graph.onConnectionChange = markAsUnsaved;
+
+// Listen for graph changes
+graph.onChange = () => {
+    if (isSaved) {
+        isSaved = false;
+        updateFileStatus();
+    }
+};
+
 
 // SocketIO event handlers
 socket.on('connect', function() {
@@ -37,12 +54,10 @@ function addLogEntry(entry) {
 
 function updateLogDisplay() {
     const modalLog = document.getElementById("modal-log");
-    if (!modalLog) return;
+    const miniLog = document.getElementById("mini-log");
+    const miniLogContainer = document.getElementById("mini-log-container");
     
-    const logContainer = modalLog.parentElement;
-    const isAtBottom = modalLog.scrollTop + modalLog.clientHeight >= modalLog.scrollHeight - 10;
-    
-    modalLog.innerHTML = logHistory.map(entry => {
+    const logHtml = logHistory.map(entry => {
         const levelClass = getLogLevelClass(entry.level);
         return `<div class="log-entry ${levelClass}">
             <span class="log-timestamp">[${entry.timestamp}]</span>
@@ -51,8 +66,24 @@ function updateLogDisplay() {
         </div>`;
     }).join('');
     
-    if (isAtBottom) {
-        modalLog.scrollTop = modalLog.scrollHeight;
+    if (modalLog) {
+        const isAtBottom = modalLog.scrollTop + modalLog.clientHeight >= modalLog.scrollHeight - 10;
+        modalLog.innerHTML = logHtml;
+        if (isAtBottom) {
+            modalLog.scrollTop = modalLog.scrollHeight;
+        }
+    }
+    
+    if (miniLog) {
+        const isAtBottom = miniLog.scrollTop + miniLog.clientHeight >= miniLog.scrollHeight - 10;
+        miniLog.innerHTML = logHtml;
+        if (isAtBottom) {
+            miniLog.scrollTop = miniLog.scrollHeight;
+        }
+        // Always show container if we have logs
+        if (miniLogContainer && logHistory.length > 0) {
+            miniLogContainer.style.display = "block";
+        }
     }
 }
 
@@ -65,6 +96,34 @@ function getLogLevelClass(level) {
         default: return 'log-default';
     }
 }
+
+function updateFileStatus() {
+    const fileInfo = document.getElementById("current-file");
+    if (currentFileName) {
+        fileInfo.textContent = currentFileName + (isSaved ? "" : " *");
+    } else {
+        fileInfo.textContent = "未保存的文件" + (isSaved ? "" : " *");
+    }
+}
+
+function downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function markAsUnsaved() {
+    if (isSaved) {
+        isSaved = false;
+        updateFileStatus();
+    }
+}
 function EmbeddedSubgraphNode() {
     this.properties = {
         template_name: "",
@@ -72,6 +131,7 @@ function EmbeddedSubgraphNode() {
     };
     this.size = [180, 80];
     this.serialize_widgets = true;
+    this.skip_subgraph_button = true;
     
     // Create embedded subgraph
     this.subgraph = new LGraph();
@@ -95,8 +155,8 @@ function EmbeddedSubgraphNode() {
     this.updateTitle();
 }
 
-EmbeddedSubgraphNode.title = "Embedded Subgraph";
-EmbeddedSubgraphNode.desc = "Reusable subgraph (embedded)";
+EmbeddedSubgraphNode.title = "Inline Subgraph";
+EmbeddedSubgraphNode.desc = "Reusable subgraph (inline)";
 
 EmbeddedSubgraphNode.prototype.addDefaultNodes = function() {
     var inputNode = LiteGraph.createNode("graph/input");
@@ -167,7 +227,7 @@ EmbeddedSubgraphNode.prototype.onSerialize = function(o) {
 }
 
 EmbeddedSubgraphNode.prototype.onConfigure = function(o) {
-    this.properties.template_name = o.template_name || "";
+    this.properties.template_name = o.template_name || (o.properties && o.properties.template_name) || "";
     
     var sub = o.subgraph || (o.properties && o.properties.subgraph);
     if (sub) {
@@ -178,6 +238,7 @@ EmbeddedSubgraphNode.prototype.onConfigure = function(o) {
             this.subgraph.onNodeAdded = null;
             this.subgraph.onNodeRemoved = null;
             
+            this.subgraph.clear();
             this.subgraph.configure(sub);
             
             this.subgraph.onNodeAdded = tmp_added;
@@ -185,7 +246,7 @@ EmbeddedSubgraphNode.prototype.onConfigure = function(o) {
             
             this.updateSlots();
         } catch (e) {
-            console.error("Error configuring embedded subgraph:", e);
+            console.error("Error configuring inline subgraph:", e);
         }
     }
     
@@ -225,7 +286,7 @@ EmbeddedSubgraphNode.prototype.updateTitle = function() {
     if (this.properties.template_name) {
         this.title = this.properties.template_name;
     } else {
-        this.title = "Embedded Subgraph";
+        this.title = "Inline Subgraph";
     }
 }
 
@@ -246,6 +307,7 @@ LiteGraph.registerNodeType("graph/embedded_subgraph", EmbeddedSubgraphNode);
 function SubgraphNode() {
     this.properties = {};
     this.subgraph = new LGraph();
+    this.skip_subgraph_button = true;
     
     var that = this;
     this.subgraph.onNodeAdded = function(node) {
@@ -334,6 +396,7 @@ SubgraphNode.prototype.onConfigure = function(o) {
             this.subgraph.onNodeAdded = null;
             this.subgraph.onNodeRemoved = null;
             
+            this.subgraph.clear();
             this.subgraph.configure(sub);
             
             this.subgraph.onNodeAdded = tmp_added;
@@ -428,7 +491,7 @@ function updateBreadcrumbs() {
 window.gotoRoot = function() {
     if (graphStack.length === 0) return;
     
-    // Save template if we're exiting an embedded subgraph
+    // Save template if we're exiting an inline subgraph
     if (graphStack.length > 0) {
         const currentNode = graphStack[graphStack.length - 1].node;
         if (currentNode && currentNode.constructor.name === 'EmbeddedSubgraphNode') {
@@ -445,7 +508,7 @@ window.gotoRoot = function() {
 window.gotoLevel = function(index) {
     if (index < 0 || index >= graphStack.length) return;
     
-    // Save template if we're exiting an embedded subgraph
+    // Save template if we're exiting an inline subgraph
     if (index < graphStack.length - 1) {
         const currentNode = graphStack[graphStack.length - 1].node;
         if (currentNode && currentNode.constructor.name === 'EmbeddedSubgraphNode') {
@@ -854,6 +917,77 @@ document.querySelectorAll(".palette .node").forEach(btn => {
   });
 });
 
+// Node search functionality
+document.getElementById("node-search").addEventListener("input", function() {
+  const searchTerm = this.value.toLowerCase();
+  const nodes = document.querySelectorAll(".palette .node");
+  const groups = document.querySelectorAll(".palette .group");
+  const embeddedSubgraphList = document.getElementById("embedded-subgraph-list");
+  const subgraphList = document.getElementById("subgraph-list");
+  const btnNewEmbedded = document.getElementById("btn-new-embedded-subgraph");
+  const btnNewSubgraph = document.getElementById("btn-new-subgraph");
+  
+  nodes.forEach(node => {
+    const text = node.textContent.toLowerCase();
+    const matches = text.includes(searchTerm);
+    // Override hidden class for search results
+    if (matches) {
+      node.style.display = "";
+      node.classList.remove("hidden");
+    } else {
+      node.style.display = "none";
+    }
+  });
+  
+  // Handle embedded subgraphs
+  if (embeddedSubgraphList) {
+    const embeddedButtons = embeddedSubgraphList.querySelectorAll("button");
+    let hasVisibleEmbedded = false;
+    embeddedButtons.forEach(btn => {
+      const text = btn.textContent.toLowerCase();
+      const matches = text.includes(searchTerm);
+      btn.style.display = matches ? "" : "none";
+      if (matches) hasVisibleEmbedded = true;
+    });
+    embeddedSubgraphList.style.display = hasVisibleEmbedded || searchTerm === "" ? "" : "none";
+    if (btnNewEmbedded) btnNewEmbedded.style.display = searchTerm === "" ? "" : "none";
+  }
+  
+  // Handle file subgraphs
+  if (subgraphList) {
+    const subgraphButtons = subgraphList.querySelectorAll("button");
+    let hasVisibleSubgraph = false;
+    subgraphButtons.forEach(btn => {
+      const text = btn.textContent.toLowerCase();
+      const matches = text.includes(searchTerm);
+      btn.style.display = matches ? "" : "none";
+      if (matches) hasVisibleSubgraph = true;
+    });
+    subgraphList.style.display = hasVisibleSubgraph || searchTerm === "" ? "" : "none";
+    if (btnNewSubgraph) btnNewSubgraph.style.display = searchTerm === "" ? "" : "none";
+  }
+  
+  // Show/hide groups based on whether they have visible nodes
+  groups.forEach(group => {
+    let hasVisibleNodes = false;
+    let next = group.nextElementSibling;
+    while (next && !next.classList.contains("group")) {
+      if ((next.classList.contains("node") && next.style.display !== "none") ||
+          (next.id === "embedded-subgraph-list" && next.style.display !== "none") ||
+          (next.id === "subgraph-list" && next.style.display !== "none")) {
+        hasVisibleNodes = true;
+        break;
+      }
+      next = next.nextElementSibling;
+    }
+    group.style.display = hasVisibleNodes || searchTerm === "" ? "" : "none";
+    // Expand groups when searching
+    if (searchTerm !== "") {
+      group.classList.remove("collapsed");
+    }
+  });
+});
+
 // Auto Layout
 document.getElementById("btn-autolayout").onclick = () => {
     const currentGraph = canvas.graph;
@@ -1023,77 +1157,78 @@ function autoLayoutGraph(currentGraph, opts) {
     currentGraph.setDirtyCanvas(true, true);
 }
 
-// Import JSON
-document.getElementById("btn-upload").onclick = () => {
-    document.getElementById("file-input").click();
+// File operations
+document.getElementById("btn-new").onclick = () => {
+  if (!isSaved && graph._nodes.length > 0) {
+    if (!confirm("当前文件未保存，确定要新建吗？")) return;
+  }
+  
+  graph.clear();
+  canvas.draw(true,true);
+  currentFileName = null;
+  isSaved = false;
+  updateFileStatus();
 };
 
-document.getElementById("file-input").onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            let json = JSON.parse(e.target.result);
-            
-            // Handle "Backend Plan" format (convert to LiteGraph)
-            if (json.model && json.model.nodes) {
-                console.log("Detected Backend Plan format, converting...");
-                const converted = {
-                    version: 0.4,
-                    nodes: [],
-                    links: json.model.links || [],
-                    groups: [],
-                    config: {}
-                };
-                
-                // Convert nodes dict to array
-                if (Array.isArray(json.model.nodes)) {
-                    converted.nodes = json.model.nodes;
-                } else {
-                    converted.nodes = Object.values(json.model.nodes);
-                }
-                
-                // Ensure links is array
-                if (!Array.isArray(converted.links)) {
-                    converted.links = [];
-                }
-                
-                json = converted;
-            }
-            
-            graph.configure(json);
-            graphStack.length = 0;
-            canvas.setGraph(graph);
-            updateBreadcrumbs();
-            alert("导入成功");
-        } catch (err) {
-            console.error(err);
-            alert("加载失败: " + err);
-        }
-        // Reset input
-        document.getElementById("file-input").value = "";
-    };
-    reader.readAsText(file);
+document.getElementById("btn-open").onclick = () => {
+  document.getElementById("open-file-input").click();
 };
 
-// Save & Load
-document.getElementById("btn-save").onclick = async () => {
-  const data = graph.serialize();
-  await fetch("/api/save_graph", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-  alert("已保存");
-};
-document.getElementById("btn-load").onclick = async () => {
-  const res = await fetch("/api/load_graph");
-  const json = await res.json();
-  if(json.graph){ 
-      graph.configure(json.graph); 
+document.getElementById("open-file-input").onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const json = JSON.parse(event.target.result);
+      graph.configure(json);
+      extractEmbeddedSubgraphs(json);
       // Reset view to root
       graphStack.length = 0;
       canvas.setGraph(graph);
       updateBreadcrumbs();
-      canvas.draw(true,true); 
+      canvas.draw(true,true);
+      
+      currentFileName = file.name;
+      isSaved = true;
+      updateFileStatus();
+    } catch (err) {
+      console.error(err);
+      alert("加载失败: " + err);
+    }
+  };
+  reader.readAsText(file);
+  // Reset input
+  document.getElementById("open-file-input").value = "";
+};
+
+document.getElementById("btn-save").onclick = () => {
+  if (!currentFileName) {
+    // 如果没有文件名，执行另存为
+    document.getElementById("btn-save-as").onclick();
+    return;
   }
+  
+  const data = graph.serialize();
+  downloadJSON(data, currentFileName);
+  isSaved = true;
+  updateFileStatus();
+};
+
+document.getElementById("btn-save-as").onclick = () => {
+  const filename = prompt("请输入文件名:", currentFileName || "my_graph.json");
+  if (!filename) return;
+  
+  if (!filename.endsWith('.json')) {
+    filename += '.json';
+  }
+  
+  const data = graph.serialize();
+  downloadJSON(data, filename);
+  currentFileName = filename;
+  isSaved = true;
+  updateFileStatus();
 };
 
 // Run
@@ -1112,7 +1247,15 @@ window.onclick = function(event) {
 }
 
 document.getElementById("btn-run").onclick = async () => {
-  const data = graph.serialize();
+  if (!isSaved) {
+    alert("请先保存文件后再运行训练。");
+    return;
+  }
+  
+  const data = {
+    filename: currentFileName,
+    graph: graph.serialize()
+  };
   modal.style.display = "block";
   modalStatus.textContent = "正在启动训练...";
   logHistory = [];
@@ -1146,57 +1289,206 @@ document.getElementById("btn-run").onclick = async () => {
 
 // Generate script
 document.getElementById("btn-gen").onclick = async () => {
-  const data = graph.serialize();
+  const data = {
+    filename: currentFileName,
+    graph: graph.serialize()
+  };
   const res = await fetch("/api/generate_script", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(data) });
   const j = await res.json();
-  alert("脚本已生成: " + j.path);
+  if (j.ok) {
+    // Download the script
+    const blob = new Blob([j.code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = j.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    alert("脚本已生成并下载: " + j.filename);
+  } else {
+    alert("生成脚本失败: " + j.error);
+  }
 };
 
-// Download JSON
-document.getElementById("btn-download").onclick = () => {
-  const data = graph.serialize();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "cortex_nodus_design.json";
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-// Upload JSON
-document.getElementById("btn-upload").onclick = () => {
-  document.getElementById("file-input").click();
-};
-
-document.getElementById("file-input").onchange = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const json = JSON.parse(e.target.result);
-      graph.configure(json);
-      // 提取嵌入式子图到模板列表
-      extractEmbeddedSubgraphs(json);
-      canvas.draw(true, true);
-      // 清空 input 以便重复导入同名文件
-      document.getElementById("file-input").value = "";
-    } catch (err) {
-      alert("导入失败: 文件格式错误");
-      console.error(err);
-    }
-  };
-  reader.readAsText(file);
-};
 
 // Status polling
-const statusEl = document.getElementById("status");
+const trainingStatusBar = document.getElementById("training-status-bar");
+const btnStopTraining = document.getElementById("btn-stop-training");
+let trainingChart = null;
+
+// Initialize Chart
+function initChart() {
+    const ctx = document.getElementById('training-chart');
+    if (!ctx) return;
+    
+    // Destroy existing chart if any
+    if (trainingChart) {
+        trainingChart.destroy();
+    }
+    
+    trainingChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Loss',
+                    data: [],
+                    borderColor: '#ff6384',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    yAxisID: 'y',
+                    tension: 0.1
+                },
+                {
+                    label: 'Val Acc',
+                    data: [],
+                    borderColor: '#36a2eb',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    yAxisID: 'y1',
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: {
+                    labels: { color: '#ccc' }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#888' },
+                    grid: { color: '#333' }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    ticks: { color: '#ff6384' },
+                    grid: { color: '#333' },
+                    title: { display: true, text: 'Loss', color: '#ff6384' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    ticks: { color: '#36a2eb' },
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'Accuracy', color: '#36a2eb' },
+                    min: 0,
+                    max: 1
+                }
+            }
+        }
+    });
+}
+
+// Stop training handler
+if (btnStopTraining) {
+    btnStopTraining.onclick = async () => {
+        if (confirm("确定要停止训练吗？")) {
+            try {
+                const res = await fetch("/api/stop", { method: "POST" });
+                const json = await res.json();
+                if (json.ok) {
+                    addLogEntry({
+                        timestamp: new Date().toLocaleString(),
+                        level: 'INFO',
+                        message: "正在停止训练...",
+                        module: 'frontend'
+                    });
+                }
+            } catch (e) {
+                console.error("停止训练失败:", e);
+            }
+        }
+    };
+}
+
 setInterval(async () => {
   try {
     const res = await fetch("/api/status");
     const s = await res.json();
-    statusEl.textContent = JSON.stringify(s, null, 2);
+    
+    // Re-fetch elements to ensure we have the current DOM nodes
+    const statusBar = document.getElementById("training-status-bar");
+    const stopBtn = document.getElementById("btn-stop-training");
+    const chartsContainer = document.getElementById("charts-container");
+    
+    // Update status bar
+    if (statusBar) {
+        if (s.running) {
+            statusBar.textContent = `Epoch ${s.epoch}/${s.total_epochs} | Loss: ${s.loss.toFixed(4)} | Acc: ${(s.val_acc*100).toFixed(1)}%`;
+            statusBar.style.color = "#4CAF50"; // Greenish for running
+        } else {
+            if (s.epoch > 0) {
+                statusBar.textContent = `完成 | Epoch ${s.epoch} | Acc: ${(s.val_acc*100).toFixed(1)}%`;
+                statusBar.style.color = "#9fb1ff";
+            } else {
+                statusBar.textContent = "准备就绪";
+                statusBar.style.color = "#888";
+            }
+        }
+    }
+    
+    // Enable/disable stop button based on running state
+    if (stopBtn) {
+        if (s.running) {
+            stopBtn.disabled = false;
+            stopBtn.style.background = "#d32f2f";
+            stopBtn.style.color = "white";
+            stopBtn.style.cursor = "pointer";
+        } else {
+            stopBtn.disabled = true;
+            stopBtn.style.background = "#444";
+            stopBtn.style.color = "#aaa";
+            stopBtn.style.cursor = "not-allowed";
+        }
+    }
+    
+    // Update charts
+    if (s.history && s.history.length > 0) {
+        const chartsSection = document.getElementById("charts-section");
+        if (chartsSection && !chartsSection.classList.contains('expanded')) {
+            // Auto-expand charts section when data becomes available
+            chartsSection.classList.add('expanded');
+            
+            if (trainingChart) {
+                setTimeout(() => {
+                    trainingChart.resize();
+                }, 100);
+            }
+        }
+        
+        if (trainingChart) {
+            const labels = s.history.map(h => h.epoch);
+            const lossData = s.history.map(h => h.loss);
+            const accData = s.history.map(h => h.val_acc);
+            
+            trainingChart.data.labels = labels;
+            trainingChart.data.datasets[0].data = lossData;
+            trainingChart.data.datasets[1].data = accData;
+            trainingChart.update('none'); // Update without animation for performance
+        }
+        } else if (s.running) {
+            const chartsSection = document.getElementById("charts-section");
+            if (chartsSection && !chartsSection.classList.contains('expanded')) {
+                // Auto-expand charts section when training starts
+                chartsSection.classList.add('expanded');
+                
+                if (trainingChart) {
+                    setTimeout(() => {
+                    trainingChart.resize();
+                }, 100);
+            }
+        }
+    }
     
     // Update modal if open
     if (modal.style.display === "block") {
@@ -1566,9 +1858,15 @@ function extractEmbeddedSubgraphs(json) {
     
     if (json.nodes) {
         json.nodes.forEach(node => {
-            if (node.type === "graph/subgraph" && node.properties && node.properties.subgraph) {
-                const name = node.title || ("Subgraph_" + node.id);
-                embeddedSubgraphTemplates[name] = node.properties.subgraph;
+            if (node.type === "graph/subgraph" || node.type === "graph/embedded_subgraph") {
+                const sub = node.subgraph || (node.properties && node.properties.subgraph);
+                if (sub) {
+                    let name = node.template_name || (node.properties && node.properties.template_name);
+                    if (!name) {
+                        name = node.title || ("Subgraph_" + node.id);
+                    }
+                    embeddedSubgraphTemplates[name] = sub;
+                }
             }
         });
     }
@@ -1608,6 +1906,13 @@ function renderEmbeddedSubgraphList() {
             addEmbeddedSubgraphNode(name);
         };
         
+        // 右键点击编辑模板
+        span.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editEmbeddedTemplate(name);
+        };
+        
         const btnDelete = document.createElement("button");
         btnDelete.innerText = "×";
         btnDelete.style.marginLeft = "5px";
@@ -1626,6 +1931,81 @@ function renderEmbeddedSubgraphList() {
         div.appendChild(btnDelete);
         container.appendChild(div);
     });
+}
+
+let previousGraphForTemplateEdit = null;
+let currentEditingTemplateName = null;
+
+function editEmbeddedTemplate(name) {
+    const template = embeddedSubgraphTemplates[name];
+    if (!template) return;
+    
+    // 保存当前图，以便返回
+    previousGraphForTemplateEdit = canvas.graph;
+    currentEditingTemplateName = name;
+    
+    // 创建临时图用于编辑模板
+    const g = new LGraph();
+    g.configure(template);
+    canvas.setGraph(g);
+    
+    // 更新面包屑
+    updateBreadcrumbsForTemplateEdit(name);
+    
+    // 显示仅在子图编辑时可见的元素
+    document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "block");
+}
+
+function updateBreadcrumbsForTemplateEdit(name) {
+    const el = document.getElementById("breadcrumbs");
+    const pathEl = document.getElementById("breadcrumb-path");
+    
+    el.style.display = "flex";
+    pathEl.innerHTML = "";
+    
+    const btnBack = document.createElement("span");
+    btnBack.className = "crumb";
+    btnBack.innerText = "Back (Save Template)";
+    btnBack.onclick = finishEmbeddedTemplateEdit;
+    pathEl.appendChild(btnBack);
+    
+    const sep = document.createElement("span");
+    sep.className = "separator";
+    sep.innerText = ">";
+    pathEl.appendChild(sep);
+    
+    const title = document.createElement("span");
+    title.className = "current";
+    title.innerText = "Editing Template: " + name;
+    pathEl.appendChild(title);
+}
+
+function finishEmbeddedTemplateEdit() {
+    if (!currentEditingTemplateName) return;
+    
+    // 保存模板
+    const data = canvas.graph.serialize();
+    embeddedSubgraphTemplates[currentEditingTemplateName] = data;
+    renderEmbeddedSubgraphList();
+    
+    // 恢复之前的图
+    if (previousGraphForTemplateEdit) {
+        canvas.setGraph(previousGraphForTemplateEdit);
+        previousGraphForTemplateEdit = null;
+    } else {
+        // Fallback to root if something went wrong
+        if (graphStack.length > 0) {
+            canvas.setGraph(graphStack[graphStack.length-1].graph);
+        } else {
+            canvas.setGraph(graph); 
+        }
+    }
+    
+    currentEditingTemplateName = null;
+    updateBreadcrumbs(); // Restore normal breadcrumbs
+    
+    // 隐藏仅在子图编辑时可见的元素
+    document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "none");
 }
 
 function addEmbeddedSubgraphNode(templateName) {
@@ -1683,6 +2063,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Palette folding
     document.querySelectorAll(".palette .group").forEach(group => {
         group.addEventListener("click", () => {
+            const searchInput = document.getElementById("node-search");
+            const isSearching = searchInput && searchInput.value.trim() !== "";
+            
+            // Don't allow collapsing during search
+            if (isSearching) return;
+            
             group.classList.toggle("collapsed");
             let next = group.nextElementSibling;
             while(next && !next.classList.contains("group")) {
@@ -1746,3 +2132,156 @@ document.addEventListener('keydown', function(event) {
         }
     }
 });
+
+// Enhanced Panel toggle functionality
+function setupPanelToggles() {
+    const headers = document.querySelectorAll('.panel-header');
+    const inspectorSection = document.getElementById('inspector-section');
+    const chartsSection = document.getElementById('charts-section');
+    const logsSection = document.getElementById('logs-section');
+    
+    // Set initial states
+    inspectorSection.classList.add('expanded');
+    chartsSection.classList.remove('expanded');
+    logsSection.classList.remove('expanded');
+    
+    headers.forEach(header => {
+        header.addEventListener('click', () => {
+            const section = header.parentElement;
+            const icon = header.querySelector('.toggle-icon');
+            const wasExpanded = section.classList.contains('expanded');
+            
+            // Toggle current panel
+            section.classList.toggle('expanded');
+            
+            // Update icon
+            if (section.classList.contains('expanded')) {
+                header.classList.add('active');
+            } else {
+                header.classList.remove('active');
+            }
+            
+            // Handle chart resize when charts panel is expanded
+            if (section.id === 'charts-section' && section.classList.contains('expanded')) {
+                if (trainingChart) {
+                    setTimeout(() => {
+                        trainingChart.resize();
+                    }, 150); // Slightly longer delay for smooth animation
+                }
+            }
+            
+        });
+    });
+}
+
+// Smooth panel collapse animation
+function collapsePanel(section) {
+    const icon = section.querySelector('.toggle-icon');
+    const header = section.querySelector('.panel-header');
+    
+    section.classList.remove('expanded');
+    header.classList.remove('active');
+}
+
+// Panel priority indicators and tooltips
+function addPanelTooltips() {
+    const headers = document.querySelectorAll('.panel-header');
+    
+    headers.forEach(header => {
+        const section = header.parentElement;
+        let tooltip = '';
+        
+        switch(section.id) {
+            case 'inspector-section':
+                tooltip = '属性面板 - 编辑选中节点的属性';
+                break;
+            case 'charts-section':
+                tooltip = '训练图表 - 查看训练过程中的损失和准确率';
+                break;
+            case 'logs-section':
+                tooltip = '训练日志 - 实时查看训练日志和状态';
+                break;
+        }
+        
+        header.title = tooltip;
+    });
+}
+
+// Keyboard shortcuts for panel toggles
+function setupPanelKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + 1: Toggle Inspector
+        if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+            e.preventDefault();
+            togglePanel('inspector-section');
+        }
+        // Ctrl/Cmd + 2: Toggle Charts
+        else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+            e.preventDefault();
+            togglePanel('charts-section');
+        }
+        // Ctrl/Cmd + 3: Toggle Logs
+        else if ((e.ctrlKey || e.metaKey) && e.key === '3') {
+            e.preventDefault();
+            togglePanel('logs-section');
+        }
+        // Ctrl/Cmd + 0: Reset to default (only inspector expanded)
+        else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+            e.preventDefault();
+            resetPanelsToDefault();
+        }
+    });
+}
+
+function togglePanel(panelId) {
+    const section = document.getElementById(panelId);
+    if (section) {
+        const header = section.querySelector('.panel-header');
+        header.click();
+    }
+}
+
+function resetPanelsToDefault() {
+    const inspectorSection = document.getElementById('inspector-section');
+    const chartsSection = document.getElementById('charts-section');
+    const logsSection = document.getElementById('logs-section');
+    
+    // Expand only inspector
+    [inspectorSection, chartsSection, logsSection].forEach(section => {
+        const icon = section.querySelector('.toggle-icon');
+        const header = section.querySelector('.panel-header');
+        
+        if (section.id === 'inspector-section') {
+            section.classList.add('expanded');
+            header.classList.add('active');
+        } else {
+            section.classList.remove('expanded');
+            header.classList.remove('active');
+        }
+    });
+}
+
+// Initialize panel system on DOM load
+document.addEventListener('DOMContentLoaded', () => {
+    initChart();
+    setupPanelToggles();
+    addPanelTooltips();
+    setupPanelKeyboardShortcuts();
+    
+    // Add visual feedback for panel interactions
+    const headers = document.querySelectorAll('.panel-header');
+    headers.forEach(header => {
+        header.addEventListener('mouseenter', () => {
+            if (!header.parentElement.classList.contains('expanded')) {
+                header.style.transform = 'translateX(2px)';
+            }
+        });
+        
+        header.addEventListener('mouseleave', () => {
+            header.style.transform = 'translateX(0)';
+        });
+    });
+});
+
+// Initialize file status
+updateFileStatus();

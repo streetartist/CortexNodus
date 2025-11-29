@@ -6,25 +6,30 @@
     <title>CortexNodus</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/litegraph.js/build/litegraph.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
     <header class="topbar">
       <div class="title">CortexNodus</div>
       <div class="actions">
-        <button id="btn-load">加载(服务端)</button>
-        <button id="btn-save">保存(服务端)</button>
-        <button id="btn-upload">导入JSON</button>
-        <button id="btn-download">导出JSON</button>
+        <button id="btn-new">新建</button>
+        <button id="btn-open">打开</button>
+        <button id="btn-save">保存</button>
+        <button id="btn-save-as">另存为</button>
         <button id="btn-run">运行训练</button>
         <button id="btn-gen">生成脚本</button>
         <button id="btn-autolayout">自动布局</button>
-        <input type="file" id="file-input" style="display:none" accept=".json">
+        <input type="file" id="open-file-input" style="display:none" accept=".json">
+      </div>
+      <div class="file-info">
+        <span id="current-file">未保存的文件</span>
       </div>
     </header>
 
     <main class="layout">
       <aside class="palette">
         <h3>节点库</h3>
+        <input type="text" id="node-search" placeholder="搜索节点..." style="width: 100%; margin-bottom: 10px; padding: 6px; background: #1a1a1a; color: #eaeaea; border: 1px solid #444;">
         <div class="group">数据</div>
         <button class="node" data-type="MNIST">MNIST</button>
         <button class="node" data-type="Fashion-MNIST">Fashion-MNIST</button>
@@ -91,12 +96,12 @@
         <div class="group">自定义</div>
         <button class="node" data-type="CustomLayer">Custom Layer</button>
 
-        <div class="group">嵌入式子图</div>
+        <div class="group">内联子图</div>
         <div id="embedded-subgraph-list" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;"></div>
-        <button id="btn-new-embedded-subgraph" style="width: 100%;">+ 新建嵌入式子图</button>
+        <button id="btn-new-embedded-subgraph" style="width: 100%;">+ 新建内联子图</button>
 
 
-        <div class="group">文件子图</div>
+        <div class="group">独立子图</div>
         <div id="subgraph-list" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;"></div>
         <button id="btn-new-subgraph" style="width: 100%;">+ 新建子图</button>
 
@@ -112,10 +117,37 @@
       </section>
 
       <aside class="inspector">
-        <h3>属性</h3>
-        <div id="inspector"></div>
-        <h3>状态</h3>
-        <pre id="status"></pre>
+        <!-- 属性面板部分 - 默认展开，优先级最高 -->
+        <div id="inspector-section" class="panel-section flex-fill">
+            <div class="panel-header">属性 <span class="toggle-icon">▶</span></div>
+            <div class="panel-content">
+                <div id="inspector"></div>
+            </div>
+        </div>
+
+        <!-- 图表部分 - 默认折叠，训练时自动展开 -->
+        <div id="charts-section" class="panel-section">
+            <div class="panel-header">训练图表 <span class="toggle-icon">▶</span></div>
+            <div class="panel-content">
+                <div id="charts-container" style="height: 100%; padding: 8px;">
+                    <canvas id="training-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日志部分 - 默认折叠，训练时自动展开 -->
+        <div id="logs-section" class="panel-section">
+            <div class="panel-header">训练日志 <span class="toggle-icon">▶</span></div>
+            <div class="panel-content">
+                <div id="mini-log-container" style="display: flex; flex-direction: column; height: 100%;">
+                    <div style="padding: 8px;">
+                        <button id="btn-stop-training" style="width: 100%; background: #444; color: #aaa; border: none; padding: 8px 12px; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold;" disabled>终止训练</button>
+                        <div id="training-status-bar" style="font-size: 12px; color: #888; margin-top: 8px; font-family: monospace; text-align: center; padding: 4px; background: #2a2a2a; border-radius: 3px; border: 1px solid #444;">准备就绪</div>
+                    </div>
+                    <div id="mini-log" style="flex: 1; overflow-y: auto; background: #111; padding: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; color: #ccc; border: 1px solid #333; margin: 0 8px 8px 8px; border-radius: 4px;"></div>
+                </div>
+            </div>
+        </div>
       </aside>
     </main>
 
