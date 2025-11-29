@@ -21,7 +21,9 @@ from torchvision import datasets, transforms
 import collections
 
 from ml.designer import parse_graph_to_plan, build_model_from_plan, build_optim_loss_from_plan
-from ml.code_generator import generate_pytorch_script
+from ml.code_generator import generate_pytorch_script, generate_inference_script
+from ml.data_loader import get_dataset
+from ml.visualization import plot_confusion_matrix, plot_predictions, plot_loss_curve
 
 def print_progress_bar(current, total, prefix='', suffix='', length=50):
     """Simple progress bar for console output"""
@@ -31,62 +33,6 @@ def print_progress_bar(current, total, prefix='', suffix='', length=50):
     print(f'\r{prefix} |{bar}| {percent:.1%} {suffix}', end='', flush=True)
     if current == total:
         print()  # New line when complete
-
-def load_wikitext_dataset(data_dir="./data/wikitext-2", seq_length=35):
-    """
-    Load WikiText-2 dataset for language modeling.
-    Returns train_ds, val_ds, test_ds, vocab_size
-    """
-    def read_tokens(file_path):
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        # Filter out empty lines and strip
-        tokens = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('='):  # Skip headers
-                tokens.extend(line.split())
-        return tokens
-    
-    # Read files
-    train_tokens = read_tokens(os.path.join(data_dir, 'wiki.train.tokens'))
-    val_tokens = read_tokens(os.path.join(data_dir, 'wiki.valid.tokens'))
-    test_tokens = read_tokens(os.path.join(data_dir, 'wiki.test.tokens'))
-    
-    # Build vocabulary
-    counter = collections.Counter(train_tokens)
-    vocab = ['<unk>', '<eos>'] + sorted(counter.keys())
-    word_to_idx = {word: i for i, word in enumerate(vocab)}
-    vocab_size = len(vocab)
-    
-    def tokens_to_ids(tokens):
-        return [word_to_idx.get(token, word_to_idx['<unk>']) for token in tokens]
-    
-    # Convert to ids
-    train_ids = tokens_to_ids(train_tokens)
-    val_ids = tokens_to_ids(val_tokens)
-    test_ids = tokens_to_ids(test_tokens)
-    
-    # Create sequences
-    def create_sequences(ids, seq_len):
-        sequences = []
-        targets = []
-        for i in range(len(ids) - seq_len):
-            seq = ids[i:i+seq_len]
-            tgt = ids[i+1:i+seq_len+1]
-            sequences.append(seq)
-            targets.append(tgt)
-        return torch.tensor(sequences, dtype=torch.long), torch.tensor(targets, dtype=torch.long)
-    
-    train_seq, train_tgt = create_sequences(train_ids, seq_length)
-    val_seq, val_tgt = create_sequences(val_ids, seq_length)
-    test_seq, test_tgt = create_sequences(test_ids, seq_length)
-    
-    train_ds = TensorDataset(train_seq, train_tgt)
-    val_ds = TensorDataset(val_seq, val_tgt)
-    test_ds = TensorDataset(test_seq, test_tgt)
-    
-    return train_ds, val_ds, test_ds, vocab_size
 
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -131,6 +77,8 @@ class TrainState:
     epoch: int = 0
     total_epochs: int = 0
     loss: float = 0.0
+    train_acc: float = 0.0
+    val_loss: float = 0.0
     val_acc: float = 0.0
     best_val_acc: float = 0.0
     best_val_loss: float = 1e9
@@ -210,166 +158,17 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
         # Data
         batch_size = plan.get("data", {}).get("batch_size", 64)
         dataset_name = plan.get("data", {}).get("dataset", "MNIST")
+        data_props = plan.get("data", {})
 
         # Check if it's a node-based dataset
         data_nodes = [n for n in plan.get("nodes", []) if n.get("type") in ["MNIST", "Fashion-MNIST", "CIFAR-10", "WikiText-2", "WikiText-103", "PennTreebank", "CustomData"]]
         if data_nodes:
             dataset_name = data_nodes[0]["type"]
             batch_size = data_nodes[0]["properties"].get("batch_size", batch_size)
+            # Merge properties
+            data_props.update(data_nodes[0]["properties"])
 
-        if dataset_name == "MNIST":
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,)),
-            ])
-            train_ds = datasets.MNIST(root="./data", train=True, download=True, transform=transform)
-            test_ds = datasets.MNIST(root="./data", train=False, download=True, transform=transform)
-            in_channels = 1
-            num_classes = 10
-        elif dataset_name == "Fashion-MNIST":
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.5,), (0.5,)),
-            ])
-            train_ds = datasets.FashionMNIST(root="./data", train=True, download=True, transform=transform)
-            test_ds = datasets.FashionMNIST(root="./data", train=False, download=True, transform=transform)
-            in_channels = 1
-            num_classes = 10
-        elif dataset_name == "CIFAR-10":
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-            ])
-            train_ds = datasets.CIFAR10(root="./data", train=True, download=True, transform=transform)
-            test_ds = datasets.CIFAR10(root="./data", train=False, download=True, transform=transform)
-            in_channels = 3
-            num_classes = 10
-        elif dataset_name in ["WikiText-2", "WikiText-103", "PennTreebank"]:
-            # Load WikiText-2 dataset
-            seq_length = data_nodes[0]["properties"].get("seq_length", 35) if data_nodes else 35
-            train_ds, val_ds, test_ds, vocab_size = load_wikitext_dataset(data_dir="./data/wikitext-2", seq_length=seq_length)
-            in_channels = seq_length  # sequence length
-            num_classes = vocab_size  # vocabulary size
-        elif dataset_name == "CustomData":
-            data_props = plan.get("data", {})
-            data_path = data_props.get("path", "")
-            data_type = data_props.get("type", "ImageFolder")
-
-            if data_type in ["WikiText-2", "WikiText-103", "PennTreebank"]:
-                # For demo / local runs we avoid depending on torchtext usage differences across versions.
-                # Use a small built-in sample text to generate sequences instead of calling torchtext APIs.
-                sample_text = """The quick brown fox jumps over the lazy dog. This is a sample text for language modeling. We need sufficient text to create meaningful sequences for training a GPT model. Language models learn patterns in text by predicting the next word given previous words. Transformer architectures have revolutionized natural language processing."""
-
-                tokens = sample_text.lower().split()
-                vocab = list(set(tokens))
-                vocab.sort()
-                word_to_idx = {word: i for i, word in enumerate(vocab)}
-
-                data = [word_to_idx[token] for token in tokens]
-
-                seq_length = int(data_props.get("input_shape", 35))
-                sequences = []
-                targets = []
-                for i in range(len(data) - seq_length):
-                    sequences.append(data[i:i+seq_length])
-                    targets.append(data[i+1:i+seq_length+1])
-
-                sequences = torch.tensor(sequences, dtype=torch.long)
-                targets = torch.tensor(targets, dtype=torch.long)
-
-                full_ds = TensorDataset(sequences, targets)
-                in_channels = seq_length
-                num_classes = len(vocab)
-
-                total_len = len(full_ds)
-                train_len = int(0.8 * total_len)
-                val_len = total_len - train_len
-                train_ds, test_ds = torch.utils.data.random_split(full_ds, [train_len, val_len])
-
-            elif not data_path or not os.path.exists(data_path):
-                raise ValueError(f"Custom data path not found: {data_path}")
-                
-            if data_type == "ImageFolder":
-                transform = transforms.Compose([
-                    transforms.Resize((128, 128)), 
-                    transforms.ToTensor(),
-                ])
-                full_ds = datasets.ImageFolder(root=data_path, transform=transform)
-                in_channels = 3
-                num_classes = len(full_ds.classes)
-                
-            elif data_type == "CSV":
-                df = pd.read_csv(data_path)
-                # Assume last column is label
-                x = df.iloc[:, :-1].values.astype('float32')
-                y = df.iloc[:, -1].values.astype('int64')
-                
-                full_ds = TensorDataset(torch.from_numpy(x), torch.from_numpy(y))
-                in_channels = x.shape[1]
-                num_classes = len(np.unique(y))
-                
-            elif data_type == "Numpy":
-                data = np.load(data_path)
-                if 'x' in data and 'y' in data:
-                    x = torch.from_numpy(data['x'].astype('float32'))
-                    y = torch.from_numpy(data['y'].astype('int64'))
-                    full_ds = TensorDataset(x, y)
-                    if len(x.shape) == 4:
-                        in_channels = x.shape[1]
-                    else:
-                        in_channels = x.shape[1]
-                    num_classes = len(torch.unique(y))
-                else:
-                    raise ValueError("Numpy file must contain 'x' and 'y'")
-                    
-            elif data_type == "Text":
-                # Simple text file processing
-                with open(data_path, 'r', encoding='utf-8') as f:
-                    text = f.read()
-                
-                # Simple tokenization (split by spaces)
-                tokens = text.split()
-                vocab = list(set(tokens))
-                vocab.sort()
-                word_to_idx = {word: i for i, word in enumerate(vocab)}
-                
-                # Convert to indices
-                data = [word_to_idx[token] for token in tokens]
-                data = torch.tensor(data, dtype=torch.long)
-                
-                seq_length = int(data_props.get("input_shape", "50"))
-                
-                # Create sequences
-                sequences = []
-                targets = []
-                for i in range(len(data) - seq_length):
-                    sequences.append(data[i:i+seq_length])
-                    targets.append(data[i+1:i+seq_length+1])
-                
-                sequences = torch.stack(sequences)
-                targets = torch.stack(targets)
-                
-                full_ds = TensorDataset(sequences, targets)
-                in_channels = seq_length
-                num_classes = len(vocab)
-                
-                total_len = len(full_ds)
-                train_len = int(0.8 * total_len)
-                val_len = total_len - train_len
-                train_ds, test_ds = torch.utils.data.random_split(full_ds, [train_len, val_len])
-                
-            else:
-                raise ValueError(f"Unsupported custom data type: {data_type}")
-            
-            total_len = len(full_ds)
-            train_len = int(0.8 * total_len)
-            val_len = total_len - train_len
-            train_ds, test_ds = torch.utils.data.random_split(full_ds, [train_len, val_len])
-        else:
-            raise ValueError("Unsupported dataset")
-
-        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+        train_loader, test_loader, in_channels, num_classes = get_dataset(dataset_name, batch_size, data_props)
 
         # Model
         model = build_model_from_plan(plan, in_channels=in_channels, num_classes=num_classes).to(device)
@@ -398,7 +197,16 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
                 
             model.train()
             epoch_loss = 0.0
+            train_correct = 0
+            train_total = 0
             total_batches = len(train_loader)
+            
+            # Main head config for training accuracy
+            main_head_cfg = train_configs[0]
+            main_nid = str(main_head_cfg["node_id"])
+            main_target_type = main_head_cfg.get("target", "Label")
+            main_src_id = str(plan['model']['connections'].get(main_nid, [])[0])
+
             for batch_idx, (x, y) in enumerate(train_loader):
                 if state.stop_requested:
                     break
@@ -437,11 +245,15 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
                     # Handle sequence outputs (for language modeling)
                     if len(pred.shape) == 3:  # (batch, seq_len, vocab_size)
                         # Reshape for CrossEntropyLoss
-                        pred = pred.reshape(-1, pred.size(-1))  # (batch*seq_len, vocab_size)
+                        pred_reshaped = pred.reshape(-1, pred.size(-1))  # (batch*seq_len, vocab_size)
                         if len(target.shape) == 2:  # (batch, seq_len)
-                            target = target.reshape(-1)  # (batch*seq_len,)
-                    
-                    l = crit(pred, target)
+                            target_reshaped = target.reshape(-1)  # (batch*seq_len,)
+                        else:
+                            target_reshaped = target
+                        l = crit(pred_reshaped, target_reshaped)
+                    else:
+                        l = crit(pred, target)
+                        
                     total_batch_loss += l * weight
                     head_losses[nid] = l.item()
                 
@@ -449,9 +261,21 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
                     total_batch_loss.backward()
                     optimizer.step()
                     epoch_loss += total_batch_loss.item()
-                else:
-                    # No loss computed (maybe all heads skipped?)
-                    pass
+                
+                # Calculate training accuracy (approximate based on main head)
+                if main_target_type != "Input":
+                    pred = outputs.get(main_src_id)
+                    if pred is not None:
+                        if len(pred.shape) == 3:
+                            pred_flat = pred.reshape(-1, pred.size(-1))
+                            y_flat = y.reshape(-1) if len(y.shape) == 2 else y
+                            p = pred_flat.argmax(dim=1)
+                            train_correct += (p == y_flat).sum().item()
+                            train_total += y_flat.size(0)
+                        else:
+                            p = pred.argmax(dim=1)
+                            train_correct += (p == y).sum().item()
+                            train_total += y.size(0)
 
                 # Update progress bar every 10 batches or at the end
                 current_loss = total_batch_loss.item() if isinstance(total_batch_loss, torch.Tensor) else 0.0
@@ -476,72 +300,92 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
                             details.append(f"Head{i+1}: {loss_val:.4f}")
                         logger.info(f"   多头损失详情: {', '.join(details)}")
 
-            # Eval (Simplified: just use the first head for accuracy/metric)
+            # Eval
             model.eval()
             correct = 0
             total = 0
-            val_loss = 0.0
+            val_loss_sum = 0.0
+            val_batches = 0
             
-            # Main head config
-            main_head_cfg = train_configs[0]
-            main_nid = str(main_head_cfg["node_id"])
-            main_target_type = main_head_cfg.get("target", "Label")
-            main_crit = criterions[main_head_cfg["node_id"]]
-            
-            main_src_id = str(plan['model']['connections'].get(main_nid, [])[0])
+            # For visualization
+            all_preds = []
+            all_targets = []
+            sample_images = None
+            sample_preds = None
+            sample_targets = None
             
             with torch.no_grad():
-                for x, y in test_loader:
+                for batch_idx, (x, y) in enumerate(test_loader):
                     x, y = x.to(device), y.to(device)
                     outputs = model(x)
                     pred = outputs.get(main_src_id)
                     
                     if pred is None: continue
                     
+                    # Calculate validation loss (using main head)
                     if main_target_type == "Input":
-                        # Handle sequence outputs
-                        if len(pred.shape) == 3:
-                            pred_flat = pred.reshape(-1, pred.size(-1))
-                            x_flat = x.reshape(-1) if len(x.shape) == 2 else x
-                            l = main_crit(pred_flat, x_flat)
-                        else:
-                            l = main_crit(pred, x)
-                        val_loss += l.item()
-                        total += 1
+                        target = x
+                    else:
+                        target = y
+                        
+                    if len(pred.shape) == 3:
+                        pred_reshaped = pred.reshape(-1, pred.size(-1))
+                        target_reshaped = target.reshape(-1) if len(target.shape) == 2 else target
+                        l = main_crit(pred_reshaped, target_reshaped)
+                    else:
+                        l = main_crit(pred, target)
+                    
+                    val_loss_sum += l.item()
+                    val_batches += 1
+                    
+                    if main_target_type == "Input":
+                        total += 1 # Count batches for metric
                     else:
                         # Handle sequence outputs for classification
-                        if len(pred.shape) == 3:  # (batch, seq_len, vocab_size)
-                            # For language modeling: compute accuracy on all positions
-                            pred_flat = pred.reshape(-1, pred.size(-1))  # (batch*seq_len, vocab_size)
-                            if len(y.shape) == 2:  # (batch, seq_len)
-                                y_flat = y.reshape(-1)  # (batch*seq_len,)
-                                p = pred_flat.argmax(dim=1)
-                                correct += (p == y_flat).sum().item()
-                                total += y_flat.size(0)
-                            else:
-                                # Fallback for unexpected shapes
-                                p = pred.argmax(dim=-1)
-                                correct += (p == y).sum().item()
-                                total += y.numel()
+                        if len(pred.shape) == 3:
+                            pred_flat = pred.reshape(-1, pred.size(-1))
+                            y_flat = y.reshape(-1) if len(y.shape) == 2 else y
+                            p = pred_flat.argmax(dim=1)
+                            correct += (p == y_flat).sum().item()
+                            total += y_flat.size(0)
                         else:
                             p = pred.argmax(dim=1)
                             correct += (p == y).sum().item()
                             total += y.size(0)
+                            
+                            # Collect for visualization (only for classification tasks)
+                            if epoch == total_epochs: # Only last epoch to save time
+                                all_preds.extend(p.cpu().numpy())
+                                all_targets.extend(y.cpu().numpy())
+                                
+                                if sample_images is None:
+                                    sample_images = x[:16]
+                                    sample_preds = p[:16]
+                                    sample_targets = y[:16]
+            
+            val_loss = val_loss_sum / max(val_batches, 1)
             
             if main_target_type == "Input":
-                val_metric = val_loss / max(len(test_loader), 1)
+                val_metric = val_loss
                 metric_name = "val_loss"
+                train_metric = 0.0 # No accuracy for input reconstruction usually
             else:
                 val_metric = correct / max(total, 1)
                 metric_name = "val_acc"
+                train_metric = train_correct / max(train_total, 1)
 
             with state_lock:
                 state.epoch = epoch
                 state.loss = float(epoch_loss / max(len(train_loader), 1))
+                state.train_acc = float(train_metric)
+                state.val_loss = float(val_loss)
                 state.val_acc = float(val_metric)
+                
                 state.history.append({
                     "epoch": epoch,
                     "loss": state.loss,
+                    "train_acc": state.train_acc,
+                    "val_loss": state.val_loss,
                     "val_acc": state.val_acc
                 })
                 
@@ -565,6 +409,27 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
                     torch.save(model.state_dict(), best_path)
                     state.best_model_path = best_path
                     logger.info(f"💾 保存最佳模型到 training_results/{model_filename} (验证准确率: {val_metric:.4f})")
+
+            # Visualization (Last Epoch)
+            if epoch == total_epochs:
+                plots_dir = os.path.join(app.static_folder, "plots")
+                if not os.path.exists(plots_dir):
+                    os.makedirs(plots_dir)
+                
+                # 1. Loss Curve
+                plot_loss_curve(state.history, os.path.join(plots_dir, "loss_curve.png"))
+                socketio.emit('update_plots', {'type': 'loss_curve', 'url': '/static/plots/loss_curve.png?t=' + str(time.time())})
+                
+                # 2. Confusion Matrix & Predictions (Classification only)
+                if main_target_type != "Input" and all_preds:
+                    classes = test_ds.classes if hasattr(test_ds, 'classes') else [str(i) for i in range(num_classes)]
+                    
+                    plot_confusion_matrix(all_targets, all_preds, classes, os.path.join(plots_dir, "confusion_matrix.png"))
+                    socketio.emit('update_plots', {'type': 'confusion_matrix', 'url': '/static/plots/confusion_matrix.png?t=' + str(time.time())})
+                    
+                    if sample_images is not None:
+                        plot_predictions(sample_images, sample_targets, sample_preds, classes, os.path.join(plots_dir, "predictions.png"))
+                        socketio.emit('update_plots', {'type': 'predictions', 'url': '/static/plots/predictions.png?t=' + str(time.time())})
 
         logger.info("🎉 训练完成！")
         
@@ -608,7 +473,7 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info("📡 前端已断开连接")
+    logger.info("� 前端已断开连接")
 
 @socketio.on('request_logs')
 def handle_request_logs():
@@ -638,6 +503,22 @@ def generate_script():
         # Generate standalone PyTorch script
         code = generate_pytorch_script(plan)
 
+        return jsonify({"ok": True, "code": code, "filename": script_filename})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/export_app", methods=["POST"])
+def export_app():
+    try:
+        data = request.get_json(force=True)
+        filename = data.get("filename")
+        graph = data.get("graph", data)
+        plan = parse_graph_to_plan(graph)
+        
+        script_filename = get_model_filename_from_graph(filename).replace('.pt', '_app.py')
+        
+        code = generate_inference_script(plan)
+        
         return jsonify({"ok": True, "code": code, "filename": script_filename})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500

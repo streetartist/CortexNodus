@@ -14,150 +14,77 @@ input, select { width:100%; padding:6px; margin-top:6px; background:#1a1a1a; col
 button { padding:6px 10px; background:#2b3a55; color:#fff; border:1px solid #3b4a66; cursor:pointer; }
 button:hover { filter:brightness(1.1); }
 
-/* Panel System */
-.panel-section {
+/* Tab System */
+.tabs-header {
     display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    border-top: 1px solid #333;
-    min-height: 40px; /* Minimum height for collapsed panels */
-}
-
-.panel-section:first-child {
-    border-top: none;
-}
-
-.panel-header {
-    padding: 10px 12px;
     background: #252526;
+    border-bottom: 1px solid #333;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 0;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #888;
     cursor: pointer;
-    font-weight: bold;
     font-size: 13px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    user-select: none;
+    font-weight: bold;
+    transition: all 0.2s;
+    margin: 0;
+    border-radius: 0;
+}
+
+.tab-btn:hover {
     color: #ccc;
-    transition: all 0.2s ease;
-    border-radius: 2px;
-    margin: 1px;
+    background: #2a2a2a;
+    filter: none;
 }
 
-.panel-header:hover {
-    background: #2a2d2e;
+.tab-btn.active {
     color: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-}
-
-.panel-header.active {
-    background: #2d5a8e;
-    color: #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-}
-
-.panel-content {
-    display: none;
-    overflow: hidden;
+    border-bottom-color: #9fb1ff;
     background: #1e1e1e;
-    border-radius: 0 0 4px 4px;
-    margin: 0 1px 2px 1px;
 }
 
-.panel-section.expanded .panel-content {
+.tabs-content {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
     display: flex;
     flex-direction: column;
-    animation: slideDown 0.3s ease-out;
 }
 
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        max-height: 0;
-    }
-    to {
-        opacity: 1;
-        max-height: 1000px;
-    }
-}
-
-.panel-section.flex-fill {
-    flex: 1;
-    min-height: 0;
-}
-
-.panel-section.flex-fill .panel-content {
-    flex: 1;
-    height: auto;
+.tab-pane {
+    display: none;
+    flex-direction: column;
+    height: 100%;
     overflow-y: auto;
-}
-
-.toggle-icon {
-    font-size: 12px;
-    color: #888;
-    transition: transform 0.3s ease, color 0.2s ease;
-    font-weight: bold;
-}
-
-.panel-section.expanded .toggle-icon {
-    transform: rotate(90deg);
-    color: #9fb1ff;
-}
-
-.panel-header:hover .toggle-icon {
-    color: #fff;
-}
-
-/* Panel priority indicators */
-.panel-header::before {
-    content: '';
-    position: absolute;
-    left: 2px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 16px;
-    border-radius: 2px;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.panel-header:hover::before {
-    opacity: 0.5;
-}
-
-#inspector-section .panel-header::before {
-    background: #4CAF50;
-}
-
-#charts-section .panel-header::before {
-    background: #ff6384;
-}
-
-#logs-section .panel-header::before {
-    background: #36a2eb;
-}
-
-/* Enhanced content styling */
-.panel-content {
-    border: 1px solid #333;
-    border-top: none;
-}
-
-/* Charts specific styling */
-#charts-section .panel-content {
-    padding: 8px;
-    min-height: 200px;
-}
-
-#charts-section.expanded .panel-content {
-    min-height: 300px;
-}
-
-/* Logs specific styling */
-#logs-section .panel-content {
     padding: 0;
 }
 
+.tab-pane.active {
+    display: flex;
+}
+
+/* Viz specific styling */
+.viz-item {
+    background: #252526;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.viz-item h4 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: #ccc;
+    border-bottom: 1px solid #333;
+    padding-bottom: 4px;
+}
+
+/* Logs specific styling */
 #mini-log-container {
     height: 100%;
     display: flex;
@@ -191,7 +118,7 @@ button:hover { filter:brightness(1.1); }
 }
 
 /* Button styling in panels */
-.panel-content button {
+.tab-pane button {
     margin: 8px;
     background: #2b3a55;
     color: #fff;
@@ -204,28 +131,16 @@ button:hover { filter:brightness(1.1); }
     transition: all 0.2s ease;
 }
 
-.panel-content button:hover:not(:disabled) {
+.tab-pane button:hover:not(:disabled) {
     background: #3b4a66;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-.panel-content button:disabled {
+.tab-pane button:disabled {
     background: #444;
     color: #aaa;
     cursor: not-allowed;
     opacity: 0.6;
-}
-
-/* Responsive adjustments */
-@media (max-height: 600px) {
-    .panel-header {
-        padding: 8px 10px;
-        font-size: 12px;
-    }
-    
-    #charts-section.expanded .panel-content {
-        min-height: 200px;
-    }
 }
 
 /* Inspector specific adjustments */

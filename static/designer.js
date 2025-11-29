@@ -11,10 +11,152 @@ let logHistory = [];
 let currentFileName = null;
 let isSaved = true;
 
+// Undo/Redo System
+class UndoManager {
+    constructor(limit = 20) {
+        this.history = [];
+        this.future = [];
+        this.limit = limit;
+        this.isUndoing = false;
+    }
+    
+    push(state) {
+        if (this.isUndoing) return;
+        // Avoid duplicates (simple check)
+        if (this.history.length > 0) {
+            const last = JSON.stringify(this.history[this.history.length - 1]);
+            const curr = JSON.stringify(state);
+            if (last === curr) return;
+        }
+        
+        this.history.push(JSON.parse(JSON.stringify(state)));
+        if (this.history.length > this.limit) {
+            this.history.shift();
+        }
+        this.future = [];
+    }
+    
+    undo() {
+        if (this.history.length <= 1) return null;
+        
+        this.isUndoing = true;
+        const current = this.history.pop();
+        this.future.push(current);
+        const prev = this.history[this.history.length - 1];
+        this.isUndoing = false;
+        return prev;
+    }
+    
+    redo() {
+        if (this.future.length === 0) return null;
+        
+        this.isUndoing = true;
+        const next = this.future.pop();
+        this.history.push(next);
+        this.isUndoing = false;
+        return next;
+    }
+}
+
+const undoManager = new UndoManager();
+
+// Global templates storage
+const embeddedSubgraphTemplates = {};
+
+function updateEmbeddedSubgraphList() {
+    const container = document.getElementById("embedded-subgraph-list");
+    if (!container) return;
+    container.innerHTML = "";
+    
+    Object.keys(embeddedSubgraphTemplates).forEach(name => {
+        const div = document.createElement("div");
+        div.className = "subgraph-item";
+        div.style.display = "flex";
+        div.style.justifyContent = "space-between";
+        div.style.alignItems = "center";
+        div.style.padding = "4px 8px";
+        div.style.borderBottom = "1px solid #444";
+        
+        const btn = document.createElement("button");
+        btn.className = "node";
+        btn.textContent = name;
+        btn.style.flex = "1";
+        btn.style.textAlign = "left";
+        btn.style.background = "none";
+        btn.style.border = "none";
+        btn.style.color = "#ccc";
+        btn.style.cursor = "pointer";
+        btn.onclick = () => {
+            const node = LiteGraph.createNode("graph/embedded_subgraph");
+            node.pos = [Math.random()*400+100, Math.random()*300+100];
+            node.properties.template_name = name;
+            // Clone the template
+            const template = JSON.parse(JSON.stringify(embeddedSubgraphTemplates[name]));
+            node.subgraph.configure(template);
+            node.updateTitle();
+            node.updateSlots();
+            canvas.graph.add(node);
+        };
+        
+        const btnDelete = document.createElement("button");
+        btnDelete.innerText = "×";
+        btnDelete.style.marginLeft = "5px";
+        btnDelete.style.padding = "0px 4px";
+        btnDelete.style.backgroundColor = "#ff4444";
+        btnDelete.style.color = "white";
+        btnDelete.style.border = "none";
+        btnDelete.style.borderRadius = "3px";
+        btnDelete.style.cursor = "pointer";
+        btnDelete.onclick = (e) => {
+            e.stopPropagation();
+            if(confirm(`确定要删除内联模板 "${name}" 吗?`)) {
+                delete embeddedSubgraphTemplates[name];
+                updateEmbeddedSubgraphList();
+            }
+        };
+        
+        div.appendChild(btn);
+        div.appendChild(btnDelete);
+        container.appendChild(div);
+    });
+}
+
+function extractEmbeddedSubgraphs(json) {
+    // 1. Load from explicit templates field (new method)
+    if (json.embedded_templates) {
+        Object.assign(embeddedSubgraphTemplates, json.embedded_templates);
+    }
+
+    // 2. Scan nodes for any templates (backward compatibility)
+    if (json.nodes) {
+        json.nodes.forEach(n => {
+            if (n.type === "graph/embedded_subgraph" && n.properties && n.properties.template_name && n.subgraph) {
+                // Only add if not already present to avoid overwriting newer definitions
+                if (!embeddedSubgraphTemplates[n.properties.template_name]) {
+                    embeddedSubgraphTemplates[n.properties.template_name] = n.subgraph;
+                }
+            }
+        });
+    }
+    updateEmbeddedSubgraphList();
+}
+
+function saveState() {
+    undoManager.push(graph.serialize());
+}
+
+// Debounce save state
+let saveTimeout;
+function triggerSaveState() {
+    markAsUnsaved();
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(saveState, 500);
+}
+
 // Listen for graph changes
-graph.onNodeAdded = markAsUnsaved;
-graph.onNodeRemoved = markAsUnsaved;
-graph.onConnectionChange = markAsUnsaved;
+graph.onNodeAdded = triggerSaveState;
+graph.onNodeRemoved = triggerSaveState;
+graph.onConnectionChange = triggerSaveState;
 
 // Listen for graph changes
 graph.onChange = () => {
@@ -41,6 +183,29 @@ socket.on('log', function(logEntry) {
 socket.on('log_history', function(logs) {
     logHistory = logs;
     updateLogDisplay();
+});
+
+socket.on('update_plots', function(data) {
+    const type = data.type;
+    const url = data.url;
+    
+    let imgId = "";
+    if (type === 'loss_curve') imgId = "viz-loss-curve";
+    else if (type === 'confusion_matrix') imgId = "viz-confusion-matrix";
+    else if (type === 'predictions') imgId = "viz-predictions";
+    
+    if (imgId) {
+        const img = document.getElementById(imgId);
+        if (img) {
+            img.src = url;
+            img.style.display = "block";
+            
+            // Switch to viz tab if not already active
+            if (type === 'loss_curve') {
+                switchTab('viz-tab');
+            }
+        }
+    }
 });
 
 function addLogEntry(entry) {
@@ -290,6 +455,13 @@ EmbeddedSubgraphNode.prototype.updateTitle = function() {
     }
 }
 
+EmbeddedSubgraphNode.prototype.saveTemplate = function() {
+    if (this.properties.template_name) {
+        embeddedSubgraphTemplates[this.properties.template_name] = this.subgraph.serialize();
+        updateEmbeddedSubgraphList();
+    }
+}
+
 EmbeddedSubgraphNode.prototype.resetToDefault = function() {
     this.properties.template_name = "";
     
@@ -424,7 +596,7 @@ function updateBreadcrumbs() {
     let html = `<span class="crumb" onclick="gotoRoot()">Root</span>`;
     
     graphStack.forEach((item, index) => {
-        html += `<span class="separator">&gt;</span>`;
+        html += `<span class="separator">></span>`;
         // If it's the last item (current view), make it non-clickable or styled differently if desired
         // But here we are inside a subgraph, so the stack contains the PARENTS.
         // Wait, graphStack contains the path TO the current graph?
@@ -545,8 +717,15 @@ function addBasicNode(type, title, properties = {}, inputs = [], outputs = []) {
   }
   NodeCtor.title = title;
   NodeCtor.prototype.onExecute = function() {};
-  NodeCtor.prototype.onPropertyChanged = function(name, value){ this.properties[name]=value; refreshInspector(this); };
-  NodeCtor.prototype.onSelected = function(){ refreshInspector(this); };
+  NodeCtor.prototype.onPropertyChanged = function(name, value){ 
+      this.properties[name]=value; 
+      refreshInspector(this); 
+      triggerSaveState(); // Save state on property change
+  };
+  NodeCtor.prototype.onSelected = function(){ 
+      refreshInspector(this); 
+      switchTab('inspector-tab'); // Auto switch to inspector
+  };
   NodeCtor.prototype.onDeselected = function(){ refreshInspector(null); };
   // Draw type in corner
   NodeCtor.prototype.onDrawForeground = function(ctx) {
@@ -579,6 +758,7 @@ const NODE_DEFINITIONS = [
   { type: "AdaptiveAvgPool", title: "AdaptiveAvgPool", props: { output_size: 1 }, in: ["in"], out: ["out"] },
   { type: "ConvTranspose2d", title: "ConvTranspose2d", props: { out_channels: 8, kernel_size: 3, stride: 1, padding: 0, output_padding: 0 }, in: ["in"], out: ["out"] },
   { type: "Upsample", title: "Upsample", props: { scale_factor: 2, mode: "nearest" }, in: ["in"], out: ["out"] },
+  { type: "Resize", title: "Resize", props: { size: "224,224", mode: "bilinear", align_corners: false }, in: ["in"], out: ["out"] },
   { type: "PixelShuffle", title: "PixelShuffle", props: { upscale_factor: 2 }, in: ["in"], out: ["out"] },
   { type: "ZeroPad2d", title: "ZeroPad2d", props: { padding: 1 }, in: ["in"], out: ["out"] },
   
@@ -699,111 +879,143 @@ function validateGraph() {
   graph.setDirtyCanvas(true, true);
 }
 
+const ShapeInference = {
+    compute: function(node, inShape) {
+        const type = node.type;
+        if (this[type]) {
+            return this[type](node.properties, inShape);
+        }
+        // Default: return input shape (Identity behavior)
+        return inShape;
+    },
+    
+    // Helpers
+    is2D: (shape) => shape.length === 3,
+    getCHW: (shape) => {
+        if (shape.length === 3) return { C: shape[0], H: shape[1], W: shape[2] };
+        return { C: shape[0], H: 1, W: 1 };
+    },
+
+    // Layer Implementations
+    Conv2D: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D (C,H,W)";
+        const { H, W } = this.getCHW(inShape);
+        const k = parseInt(p.kernel_size||3);
+        const s = parseInt(p.stride||1);
+        const padding = (p.padding !== undefined) ? parseInt(p.padding) : Math.floor(k/2);
+        const outC = parseInt(p.out_channels||8);
+        const outH = Math.floor((H + 2*padding - k)/s + 1);
+        const outW = Math.floor((W + 2*padding - k)/s + 1);
+        if (outH <= 0 || outW <= 0) throw "Spatial dim became <= 0";
+        return [outC, outH, outW];
+    },
+    
+    ConvTranspose2d: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { H, W } = this.getCHW(inShape);
+        const k = parseInt(p.kernel_size||3);
+        const s = parseInt(p.stride||1);
+        const pad = parseInt(p.padding||0);
+        const outPad = parseInt(p.output_padding||0);
+        const outC = parseInt(p.out_channels||8);
+        const outH = (H - 1)*s - 2*pad + k + outPad;
+        const outW = (W - 1)*s - 2*pad + k + outPad;
+        return [outC, outH, outW];
+    },
+    
+    MaxPool: function(p, inShape) { return this._pool(p, inShape); },
+    AvgPool: function(p, inShape) { return this._pool(p, inShape); },
+    
+    _pool: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C, H, W } = this.getCHW(inShape);
+        const k = parseInt(p.kernel_size||2);
+        const s = parseInt(p.stride||k);
+        const pad = parseInt(p.padding||0);
+        const outH = Math.floor((H + 2*pad - k)/s + 1);
+        const outW = Math.floor((W + 2*pad - k)/s + 1);
+        if (outH < 1 || outW < 1) throw "Spatial dim too small";
+        return [C, outH, outW];
+    },
+    
+    AdaptiveAvgPool: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C } = this.getCHW(inShape);
+        const os = parseInt(p.output_size||1);
+        return [C, os, os];
+    },
+    
+    Flatten: function(p, inShape) {
+        if (this.is2D(inShape)) {
+            const { C, H, W } = this.getCHW(inShape);
+            return [C*H*W];
+        }
+        return inShape;
+    },
+    
+    Dense: function(p, inShape) {
+        const outF = parseInt(p.out_features||10);
+        return [outF];
+    },
+    
+    Linear: function(p, inShape) { return this.Dense(p, inShape); },
+    
+    Upsample: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C, H, W } = this.getCHW(inShape);
+        const sf = parseFloat(p.scale_factor||2.0);
+        return [C, Math.floor(H * sf), Math.floor(W * sf)];
+    },
+    
+    Resize: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C } = this.getCHW(inShape);
+        let size = p.size;
+        let outH, outW;
+        if (typeof size === 'string') {
+            size = size.replace(/[\[\]\(\)]/g, '');
+            if (size.includes(',')) {
+                const parts = size.split(',').map(Number);
+                outH = parts[0];
+                outW = parts[1];
+            } else {
+                outH = parseInt(size);
+                outW = parseInt(size);
+            }
+        } else if (Array.isArray(size)) {
+            outH = size[0];
+            outW = size[1];
+        } else {
+            outH = parseInt(size);
+            outW = parseInt(size);
+        }
+        return [C, outH, outW];
+    },
+    
+    PixelShuffle: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C, H, W } = this.getCHW(inShape);
+        const uf = parseInt(p.upscale_factor||2);
+        const outC = Math.floor(C / (uf*uf));
+        if (outC < 1) throw "Channels too small for PixelShuffle";
+        return [outC, H * uf, W * uf];
+    },
+    
+    ZeroPad2d: function(p, inShape) {
+        if (!this.is2D(inShape)) throw "Input must be 3D";
+        const { C, H, W } = this.getCHW(inShape);
+        const pad = parseInt(p.padding||1);
+        return [C, H + 2*pad, W + 2*pad];
+    },
+    
+    Embedding: function(p, inShape) {
+        const dim = parseInt(p.embedding_dim||128);
+        return [dim];
+    }
+};
+
 function computeNodeOutputShape(node, inShape) {
-  const p = node.properties;
-  const type = node.type;
-  
-  // Helper: Check dims
-  const is2D = inShape.length === 3;
-  const C = is2D ? inShape[0] : inShape[0];
-  const H = is2D ? inShape[1] : 1;
-  const W = is2D ? inShape[2] : 1;
-
-  if (["Conv2D"].includes(type)) {
-    if (!is2D) throw "Input must be 3D (C,H,W)";
-    const k = parseInt(p.kernel_size||3);
-    const s = parseInt(p.stride||1);
-    const pad = parseInt(p.padding||0); // Default padding logic in backend is k//2 if not specified, but here we use explicit or default
-    // Backend logic: if padding not in props, it uses k//2. 
-    // But wait, in backend: pad = k // 2. 
-    // Let's match backend exactly.
-    const padding = (p.padding !== undefined) ? parseInt(p.padding) : Math.floor(k/2);
-    
-    const outC = parseInt(p.out_channels||8);
-    const outH = Math.floor((H + 2*padding - k)/s + 1);
-    const outW = Math.floor((W + 2*padding - k)/s + 1);
-    if (outH <= 0 || outW <= 0) throw "Spatial dim became <= 0";
-    return [outC, outH, outW];
-  }
-  
-  if (["ConvTranspose2d"].includes(type)) {
-    if (!is2D) throw "Input must be 3D";
-    const k = parseInt(p.kernel_size||3);
-    const s = parseInt(p.stride||1);
-    const pad = parseInt(p.padding||0);
-    const outPad = parseInt(p.output_padding||0);
-    const outC = parseInt(p.out_channels||8);
-    
-    const outH = (H - 1)*s - 2*pad + k + outPad;
-    const outW = (W - 1)*s - 2*pad + k + outPad;
-    return [outC, outH, outW];
-  }
-
-  if (["MaxPool", "AvgPool"].includes(type)) {
-    if (!is2D) throw "Input must be 3D";
-    const k = parseInt(p.kernel_size||2);
-    // Backend uses default stride = kernel_size
-    const s = k; 
-    const outH = Math.floor(H/s);
-    const outW = Math.floor(W/s);
-    if (outH < 1 || outW < 1) throw "Spatial dim too small";
-    return [C, outH, outW];
-  }
-  
-  if (["AdaptiveAvgPool"].includes(type)) {
-      if (!is2D) throw "Input must be 3D";
-      const os = parseInt(p.output_size||1);
-      return [C, os, os];
-  }
-
-  if (["Flatten"].includes(type)) {
-    if (is2D) return [C*H*W];
-    return inShape;
-  }
-
-  if (["Dense"].includes(type)) {
-    // Dense can take 2D (auto-flatten) or 1D
-    const outF = parseInt(p.out_features||10);
-    return [outF];
-  }
-  
-  if (["ReLU", "LeakyReLU", "Sigmoid", "Tanh", "ELU", "GELU", "SiLU", "Softmax", "LogSoftmax", "Identity", "Dropout", "Dropout2d", "AlphaDropout", "BatchNorm2d", "BatchNorm1d", "InstanceNorm2d", "GroupNorm", "LayerNorm"].includes(type)) {
-      return inShape; // Shape unchanged
-  }
-  
-  if (["Loss", "Optimizer", "TrainRunner"].includes(type)) {
-      return inShape;
-  }
-
-  if (["Upsample"].includes(type)) {
-      if (!is2D) throw "Input must be 3D";
-      const sf = parseFloat(p.scale_factor||2.0);
-      const outH = Math.floor(H * sf);
-      const outW = Math.floor(W * sf);
-      return [C, outH, outW];
-  }
-
-  if (["PixelShuffle"].includes(type)) {
-      if (!is2D) throw "Input must be 3D";
-      const uf = parseInt(p.upscale_factor||2);
-      const outC = Math.floor(C / (uf*uf));
-      if (outC < 1) throw "Channels too small for PixelShuffle";
-      const outH = H * uf;
-      const outW = W * uf;
-      return [outC, outH, outW];
-  }
-
-  if (["ZeroPad2d"].includes(type)) {
-      if (!is2D) throw "Input must be 3D";
-      const pad = parseInt(p.padding||1);
-      return [C, H + 2*pad, W + 2*pad];
-  }
-  
-  if (["PReLU", "Softplus", "Hardswish", "Hardsigmoid"].includes(type)) {
-      return inShape;
-  }
-
-  return inShape;
+    return ShapeInference.compute(node, inShape);
 }
 
 // Hook into graph events
@@ -1211,6 +1423,9 @@ document.getElementById("btn-save").onclick = () => {
   }
   
   const data = graph.serialize();
+  // Save embedded templates
+  data.embedded_templates = embeddedSubgraphTemplates;
+  
   downloadJSON(data, currentFileName);
   isSaved = true;
   updateFileStatus();
@@ -1225,6 +1440,9 @@ document.getElementById("btn-save-as").onclick = () => {
   }
   
   const data = graph.serialize();
+  // Save embedded templates
+  data.embedded_templates = embeddedSubgraphTemplates;
+  
   downloadJSON(data, filename);
   currentFileName = filename;
   isSaved = true;
@@ -1314,79 +1532,83 @@ document.getElementById("btn-gen").onclick = async () => {
 // Status polling
 const trainingStatusBar = document.getElementById("training-status-bar");
 const btnStopTraining = document.getElementById("btn-stop-training");
-let trainingChart = null;
+let lossChart = null;
+let accChart = null;
 
 // Initialize Chart
 function initChart() {
-    const ctx = document.getElementById('training-chart');
-    if (!ctx) return;
+    const ctxLoss = document.getElementById('loss-chart');
+    const ctxAcc = document.getElementById('acc-chart');
     
-    // Destroy existing chart if any
-    if (trainingChart) {
-        trainingChart.destroy();
-    }
-    
-    trainingChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [
-                {
-                    label: 'Loss',
-                    data: [],
-                    borderColor: '#ff6384',
-                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                    yAxisID: 'y',
-                    tension: 0.1
-                },
-                {
-                    label: 'Val Acc',
-                    data: [],
-                    borderColor: '#36a2eb',
-                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                    yAxisID: 'y1',
-                    tension: 0.1
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
+    if (ctxLoss) {
+        if (lossChart) lossChart.destroy();
+        lossChart = new Chart(ctxLoss, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Train Loss',
+                        data: [],
+                        borderColor: '#ff6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Val Loss',
+                        data: [],
+                        borderColor: '#ff9f40',
+                        backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                        tension: 0.1
+                    }
+                ]
             },
-            plugins: {
-                legend: {
-                    labels: { color: '#ccc' }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: { color: '#888' },
-                    grid: { color: '#333' }
-                },
-                y: {
-                    type: 'linear',
-                    display: true,
-                    position: 'left',
-                    ticks: { color: '#ff6384' },
-                    grid: { color: '#333' },
-                    title: { display: true, text: 'Loss', color: '#ff6384' }
-                },
-                y1: {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    ticks: { color: '#36a2eb' },
-                    grid: { drawOnChartArea: false },
-                    title: { display: true, text: 'Accuracy', color: '#36a2eb' },
-                    min: 0,
-                    max: 1
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#ccc' } }, title: { display: true, text: 'Loss', color: '#ccc' } },
+                scales: {
+                    x: { ticks: { color: '#888' }, grid: { color: '#333' } },
+                    y: { ticks: { color: '#ccc' }, grid: { color: '#333' } }
                 }
             }
-        }
-    });
+        });
+    }
+    
+    if (ctxAcc) {
+        if (accChart) accChart.destroy();
+        accChart = new Chart(ctxAcc, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Train Acc',
+                        data: [],
+                        borderColor: '#4bc0c0',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Val Acc',
+                        data: [],
+                        borderColor: '#36a2eb',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#ccc' } }, title: { display: true, text: 'Accuracy', color: '#ccc' } },
+                scales: {
+                    x: { ticks: { color: '#888' }, grid: { color: '#333' } },
+                    y: { ticks: { color: '#ccc' }, grid: { color: '#333' }, min: 0, max: 1 }
+                }
+            }
+        });
+    }
 }
 
 // Stop training handler
@@ -1454,39 +1676,24 @@ setInterval(async () => {
     
     // Update charts
     if (s.history && s.history.length > 0) {
-        const chartsSection = document.getElementById("charts-section");
-        if (chartsSection && !chartsSection.classList.contains('expanded')) {
-            // Auto-expand charts section when data becomes available
-            chartsSection.classList.add('expanded');
-            
-            if (trainingChart) {
-                setTimeout(() => {
-                    trainingChart.resize();
-                }, 100);
-            }
+        const labels = s.history.map(h => h.epoch);
+        const trainLoss = s.history.map(h => h.loss);
+        const valLoss = s.history.map(h => h.val_loss);
+        const trainAcc = s.history.map(h => h.train_acc);
+        const valAcc = s.history.map(h => h.val_acc);
+        
+        if (lossChart) {
+            lossChart.data.labels = labels;
+            lossChart.data.datasets[0].data = trainLoss;
+            lossChart.data.datasets[1].data = valLoss;
+            lossChart.update('none');
         }
         
-        if (trainingChart) {
-            const labels = s.history.map(h => h.epoch);
-            const lossData = s.history.map(h => h.loss);
-            const accData = s.history.map(h => h.val_acc);
-            
-            trainingChart.data.labels = labels;
-            trainingChart.data.datasets[0].data = lossData;
-            trainingChart.data.datasets[1].data = accData;
-            trainingChart.update('none'); // Update without animation for performance
-        }
-        } else if (s.running) {
-            const chartsSection = document.getElementById("charts-section");
-            if (chartsSection && !chartsSection.classList.contains('expanded')) {
-                // Auto-expand charts section when training starts
-                chartsSection.classList.add('expanded');
-                
-                if (trainingChart) {
-                    setTimeout(() => {
-                    trainingChart.resize();
-                }, 100);
-            }
+        if (accChart) {
+            accChart.data.labels = labels;
+            accChart.data.datasets[0].data = trainAcc;
+            accChart.data.datasets[1].data = valAcc;
+            accChart.update('none');
         }
     }
     
@@ -1578,11 +1785,13 @@ SubgraphRefNode.prototype.updateSlotsFromData = function(data) {
     this.title = this.properties.subgraph_name.replace(".json", "");
 }
 
-SubgraphRefNode.prototype.onDblClick = function() {
-    var name = this.properties.subgraph_name;
-    if(name) {
-        openSubgraphEditor(name);
-    }
+SubgraphRefNode.prototype.onDblClick = function(e, pos, graphCanvas) {
+    // Push current graph to stack
+    graphStack.push({ graph: graphCanvas.graph, node: this });
+    
+    // Switch to subgraph
+    graphCanvas.setGraph(this.subgraph);
+    updateBreadcrumbs();
 }
 
 SubgraphRefNode.prototype.getExtraMenuOptions = function(canvas, options) {
@@ -1778,27 +1987,39 @@ async function loadMainGraph() {
         });
 }
 
-// Override Save Button
+// Override Save Button (for Subgraph Editor context)
+// Note: This overrides the previous btn-save handler if we are in subgraph editing mode logic,
+// but actually we should merge the logic.
+// The previous handler handles local file download. This one handles server-side save?
+// Let's unify them. The previous handler is for "Local File Mode".
+// This handler seems to be intended for "Server Mode" or "Subgraph Mode".
+// Since we are mixing local file handling and server-side subgraph handling, let's be careful.
+
+// We will use a unified handler that checks context.
 document.getElementById("btn-save").onclick = async () => {
-    // 获取当前活动的图
-    var currentGraph = canvas.graph;
-    var data = currentGraph.serialize();
-    
+    // If we are editing a server-side subgraph
     if (currentSubgraphName) {
+        const currentGraph = canvas.graph;
+        const subgraphData = currentGraph.serialize();
         await fetch("/api/subgraphs/" + currentSubgraphName, {
             method: "POST",
-            body: JSON.stringify(data)
+            body: JSON.stringify(subgraphData)
         });
         alert("子图已保存: " + currentSubgraphName);
-        // Refresh list in case it's new (though we only edit existing ones here)
-    } else {
-        await fetch("/api/save_graph", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify(data) 
-        });
-        alert("主图已保存");
+        return;
     }
+
+    // Otherwise, standard local file save
+    if (!currentFileName) {
+        document.getElementById("btn-save-as").onclick();
+        return;
+    }
+    
+    const data = graph.serialize();
+    data.embedded_templates = embeddedSubgraphTemplates;
+    downloadJSON(data, currentFileName);
+    isSaved = true;
+    updateFileStatus();
 };
 
 // New Subgraph Button
@@ -1844,443 +2065,160 @@ window.addEventListener('beforeunload', async (event) => {
     }
 });
 
-
-
-// Initial Load
-fetchSubgraphs();
-
-// Embedded Subgraph Template Management
-const embeddedSubgraphTemplates = {}; // 从当前文件加载，不再使用 localStorage
-
-function extractEmbeddedSubgraphs(json) {
-    // 清空当前模板
-    Object.keys(embeddedSubgraphTemplates).forEach(key => delete embeddedSubgraphTemplates[key]);
-    
-    if (json.nodes) {
-        json.nodes.forEach(node => {
-            if (node.type === "graph/subgraph" || node.type === "graph/embedded_subgraph") {
-                const sub = node.subgraph || (node.properties && node.properties.subgraph);
-                if (sub) {
-                    let name = node.template_name || (node.properties && node.properties.template_name);
-                    if (!name) {
-                        name = node.title || ("Subgraph_" + node.id);
-                    }
-                    embeddedSubgraphTemplates[name] = sub;
-                }
-            }
+// Tab System
+function setupTabs() {
+    const tabs = document.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetId = tab.dataset.tab;
+            switchTab(targetId);
         });
-    }
-    
-    // 重新渲染列表
-    renderEmbeddedSubgraphList();
-}
-
-function renderEmbeddedSubgraphList() {
-    const container = document.getElementById("embedded-subgraph-list");
-    if (!container) return;
-    container.innerHTML = "";
-    
-    Object.keys(embeddedSubgraphTemplates).forEach(name => {
-        const div = document.createElement("div");
-        div.className = "embedded-subgraph-item";
-        div.style.display = "flex";
-        div.style.justifyContent = "space-between";
-        div.style.alignItems = "center";
-        div.style.padding = "4px 8px";
-        div.style.borderBottom = "1px solid #444";
-        div.style.cursor = "pointer";
-        div.style.fontSize = "12px";
-        
-        const span = document.createElement("span");
-        span.innerText = name;
-        span.style.cursor = "pointer";
-        span.style.color = "#4CAF50";
-        span.onmouseover = () => {
-            span.style.textDecoration = "underline";
-        };
-        span.onmouseout = () => {
-            span.style.textDecoration = "none";
-        };
-        span.onclick = (e) => {
-            e.stopPropagation();
-            addEmbeddedSubgraphNode(name);
-        };
-        
-        // 右键点击编辑模板
-        span.oncontextmenu = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            editEmbeddedTemplate(name);
-        };
-        
-        const btnDelete = document.createElement("button");
-        btnDelete.innerText = "×";
-        btnDelete.style.marginLeft = "5px";
-        btnDelete.style.padding = "0px 4px";
-        btnDelete.style.backgroundColor = "#ff4444";
-        btnDelete.style.color = "white";
-        btnDelete.style.border = "none";
-        btnDelete.style.borderRadius = "3px";
-        btnDelete.style.cursor = "pointer";
-        btnDelete.onclick = (e) => {
-            e.stopPropagation();
-            deleteEmbeddedSubgraphTemplate(name);
-        };
-        
-        div.appendChild(span);
-        div.appendChild(btnDelete);
-        container.appendChild(div);
     });
 }
 
-let previousGraphForTemplateEdit = null;
-let currentEditingTemplateName = null;
-
-function editEmbeddedTemplate(name) {
-    const template = embeddedSubgraphTemplates[name];
-    if (!template) return;
-    
-    // 保存当前图，以便返回
-    previousGraphForTemplateEdit = canvas.graph;
-    currentEditingTemplateName = name;
-    
-    // 创建临时图用于编辑模板
-    const g = new LGraph();
-    g.configure(template);
-    canvas.setGraph(g);
-    
-    // 更新面包屑
-    updateBreadcrumbsForTemplateEdit(name);
-    
-    // 显示仅在子图编辑时可见的元素
-    document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "block");
-}
-
-function updateBreadcrumbsForTemplateEdit(name) {
-    const el = document.getElementById("breadcrumbs");
-    const pathEl = document.getElementById("breadcrumb-path");
-    
-    el.style.display = "flex";
-    pathEl.innerHTML = "";
-    
-    const btnBack = document.createElement("span");
-    btnBack.className = "crumb";
-    btnBack.innerText = "Back (Save Template)";
-    btnBack.onclick = finishEmbeddedTemplateEdit;
-    pathEl.appendChild(btnBack);
-    
-    const sep = document.createElement("span");
-    sep.className = "separator";
-    sep.innerText = ">";
-    pathEl.appendChild(sep);
-    
-    const title = document.createElement("span");
-    title.className = "current";
-    title.innerText = "Editing Template: " + name;
-    pathEl.appendChild(title);
-}
-
-function finishEmbeddedTemplateEdit() {
-    if (!currentEditingTemplateName) return;
-    
-    // 保存模板
-    const data = canvas.graph.serialize();
-    embeddedSubgraphTemplates[currentEditingTemplateName] = data;
-    renderEmbeddedSubgraphList();
-    
-    // 恢复之前的图
-    if (previousGraphForTemplateEdit) {
-        canvas.setGraph(previousGraphForTemplateEdit);
-        previousGraphForTemplateEdit = null;
-    } else {
-        // Fallback to root if something went wrong
-        if (graphStack.length > 0) {
-            canvas.setGraph(graphStack[graphStack.length-1].graph);
+function switchTab(tabId) {
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.dataset.tab === tabId) {
+            btn.classList.add('active');
         } else {
-            canvas.setGraph(graph); 
-        }
-    }
-    
-    currentEditingTemplateName = null;
-    updateBreadcrumbs(); // Restore normal breadcrumbs
-    
-    // 隐藏仅在子图编辑时可见的元素
-    document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "none");
-}
-
-function addEmbeddedSubgraphNode(templateName) {
-    const node = LiteGraph.createNode("graph/embedded_subgraph");
-    node.pos = [100, 100];
-    node.properties.template_name = templateName;
-    
-    // Load template data
-    const templateData = embeddedSubgraphTemplates[templateName];
-    if (templateData) {
-        node.onConfigure({ subgraph: templateData, template_name: templateName });
-    }
-    
-    canvas.graph.add(node);
-}
-
-function deleteEmbeddedSubgraphTemplate(name) {
-    if (confirm("确定要删除嵌入式子图模板 '" + name + "' 吗？此操作不可撤销。")) {
-        delete embeddedSubgraphTemplates[name];
-        // 不再保存到 localStorage
-        renderEmbeddedSubgraphList();
-    }
-}
-
-function saveEmbeddedSubgraphTemplate(name, subgraphData) {
-    embeddedSubgraphTemplates[name] = subgraphData;
-    // 不再保存到 localStorage
-    renderEmbeddedSubgraphList();
-}
-
-// Event listeners
-document.addEventListener('DOMContentLoaded', function() {
-    renderEmbeddedSubgraphList();
-    
-    document.getElementById('btn-new-embedded-subgraph').addEventListener('click', () => {
-        const name = prompt("输入嵌入式子图模板名称:");
-        if (name && name.trim()) {
-            if (embeddedSubgraphTemplates[name]) {
-                alert("模板名称已存在，请选择其他名称。");
-                return;
-            }
-            
-            // Create a new embedded subgraph node and immediately enter edit mode
-            const node = LiteGraph.createNode("graph/embedded_subgraph");
-            node.pos = [100, 100];
-            node.properties.template_name = name;
-            node.updateTitle();
-            canvas.graph.add(node);
-            
-            // Enter editing mode
-            node.onDblClick(null, null, canvas);
+            btn.classList.remove('active');
         }
     });
     
-    // Palette folding
-    document.querySelectorAll(".palette .group").forEach(group => {
-        group.addEventListener("click", () => {
-            const searchInput = document.getElementById("node-search");
-            const isSearching = searchInput && searchInput.value.trim() !== "";
-            
-            // Don't allow collapsing during search
-            if (isSearching) return;
-            
-            group.classList.toggle("collapsed");
-            let next = group.nextElementSibling;
-            while(next && !next.classList.contains("group")) {
-                // Hide/show node buttons
-                if(next.classList.contains("node")) {
-                    next.classList.toggle("hidden");
-                }
-                // Hide/show embedded subgraph list and button
-                if(next.id === "embedded-subgraph-list" || next.id === "btn-new-embedded-subgraph") {
-                    next.style.display = next.style.display === "none" ? "" : "none";
-                }
-                // Hide/show file subgraph list and button
-                if(next.id === "subgraph-list" || next.id === "btn-new-subgraph") {
-                    next.style.display = next.style.display === "none" ? "" : "none";
-                }
-                next = next.nextElementSibling;
+    // Update panes
+    document.querySelectorAll('.tab-pane').forEach(pane => {
+        if (pane.id === tabId) {
+            pane.classList.add('active');
+            // Resize charts if needed
+            if (tabId === 'charts-tab') {
+                if (lossChart) setTimeout(() => lossChart.resize(), 50);
+                if (accChart) setTimeout(() => accChart.resize(), 50);
             }
-        });
-    });
-});
-
-// Modify EmbeddedSubgraphNode to save templates when exiting edit mode
-const originalOnDblClick = EmbeddedSubgraphNode.prototype.onDblClick;
-EmbeddedSubgraphNode.prototype.onDblClick = function(e, pos, graphCanvas) {
-    // If we have a template name, save current state before entering edit mode
-    if (this.properties.template_name) {
-        const currentData = this.subgraph.serialize();
-        saveEmbeddedSubgraphTemplate(this.properties.template_name, currentData);
-    }
-    
-    // Call original method
-    originalOnDblClick.call(this, e, pos, graphCanvas);
-};
-
-// Override the exit editing functionality to save template
-// We need to find where editing is exited and add save functionality
-// This might be in the breadcrumb navigation or escape key handling
-
-// Let's add a method to save template
-EmbeddedSubgraphNode.prototype.saveTemplate = function() {
-    if (this.properties.template_name) {
-        const data = this.subgraph.serialize();
-        saveEmbeddedSubgraphTemplate(this.properties.template_name, data);
-    }
-};
-
-// Handle ESC key to exit subgraph editing
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Escape' && graphStack.length > 0) {
-        // Save template if we're exiting an embedded subgraph
-        const currentNode = graphStack[graphStack.length - 1].node;
-        if (currentNode && currentNode.constructor.name === 'EmbeddedSubgraphNode') {
-            currentNode.saveTemplate();
-        }
-        
-        // Exit to parent graph
-        if (graphStack.length === 1) {
-            gotoRoot();
         } else {
-            gotoLevel(graphStack.length - 2);
+            pane.classList.remove('active');
         }
-    }
-});
-
-// Enhanced Panel toggle functionality
-function setupPanelToggles() {
-    const headers = document.querySelectorAll('.panel-header');
-    const inspectorSection = document.getElementById('inspector-section');
-    const chartsSection = document.getElementById('charts-section');
-    const logsSection = document.getElementById('logs-section');
-    
-    // Set initial states
-    inspectorSection.classList.add('expanded');
-    chartsSection.classList.remove('expanded');
-    logsSection.classList.remove('expanded');
-    
-    headers.forEach(header => {
-        header.addEventListener('click', () => {
-            const section = header.parentElement;
-            const icon = header.querySelector('.toggle-icon');
-            const wasExpanded = section.classList.contains('expanded');
-            
-            // Toggle current panel
-            section.classList.toggle('expanded');
-            
-            // Update icon
-            if (section.classList.contains('expanded')) {
-                header.classList.add('active');
-            } else {
-                header.classList.remove('active');
-            }
-            
-            // Handle chart resize when charts panel is expanded
-            if (section.id === 'charts-section' && section.classList.contains('expanded')) {
-                if (trainingChart) {
-                    setTimeout(() => {
-                        trainingChart.resize();
-                    }, 150); // Slightly longer delay for smooth animation
-                }
-            }
-            
-        });
     });
 }
 
-// Smooth panel collapse animation
-function collapsePanel(section) {
-    const icon = section.querySelector('.toggle-icon');
-    const header = section.querySelector('.panel-header');
-    
-    section.classList.remove('expanded');
-    header.classList.remove('active');
-}
-
-// Panel priority indicators and tooltips
-function addPanelTooltips() {
-    const headers = document.querySelectorAll('.panel-header');
-    
-    headers.forEach(header => {
-        const section = header.parentElement;
-        let tooltip = '';
-        
-        switch(section.id) {
-            case 'inspector-section':
-                tooltip = '属性面板 - 编辑选中节点的属性';
-                break;
-            case 'charts-section':
-                tooltip = '训练图表 - 查看训练过程中的损失和准确率';
-                break;
-            case 'logs-section':
-                tooltip = '训练日志 - 实时查看训练日志和状态';
-                break;
-        }
-        
-        header.title = tooltip;
-    });
-}
-
-// Keyboard shortcuts for panel toggles
-function setupPanelKeyboardShortcuts() {
+// Keyboard shortcuts
+function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
-        // Ctrl/Cmd + 1: Toggle Inspector
-        if ((e.ctrlKey || e.metaKey) && e.key === '1') {
-            e.preventDefault();
-            togglePanel('inspector-section');
+        // Ctrl/Cmd + 1-4: Switch Tabs
+        if (e.ctrlKey || e.metaKey) {
+            if (e.key === '1') { e.preventDefault(); switchTab('inspector-tab'); }
+            if (e.key === '2') { e.preventDefault(); switchTab('charts-tab'); }
+            if (e.key === '3') { e.preventDefault(); switchTab('logs-tab'); }
+            if (e.key === '4') { e.preventDefault(); switchTab('viz-tab'); }
         }
-        // Ctrl/Cmd + 2: Toggle Charts
-        else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
-            e.preventDefault();
-            togglePanel('charts-section');
+        
+        // Delete/Backspace: Delete selected nodes
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            // Only if not typing in an input
+            if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                deleteSelectedNodes();
+            }
         }
-        // Ctrl/Cmd + 3: Toggle Logs
-        else if ((e.ctrlKey || e.metaKey) && e.key === '3') {
+
+        // Undo/Redo
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
             e.preventDefault();
-            togglePanel('logs-section');
+            const state = undoManager.undo();
+            if (state) {
+                graph.configure(state);
+            }
         }
-        // Ctrl/Cmd + 0: Reset to default (only inspector expanded)
-        else if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+        if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
             e.preventDefault();
-            resetPanelsToDefault();
+            const state = undoManager.redo();
+            if (state) {
+                graph.configure(state);
+            }
         }
     });
 }
 
-function togglePanel(panelId) {
-    const section = document.getElementById(panelId);
-    if (section) {
-        const header = section.querySelector('.panel-header');
-        header.click();
+function deleteSelectedNodes() {
+    if (canvas.graph) {
+        // LiteGraph stores nodes in _nodes array (or object depending on version, but usually array in recent versions)
+        // But canvas.selected_nodes is a map or object.
+        // Let's iterate graph._nodes and check is_selected
+        const nodes = canvas.graph._nodes;
+        if (!nodes) return;
+        
+        // Create a copy to avoid modification during iteration issues
+        const selected = nodes.filter(n => n.is_selected);
+        
+        selected.forEach(node => {
+            canvas.graph.remove(node);
+        });
+        
+        if (selected.length > 0) {
+            canvas.setDirty(true, true);
+        }
     }
 }
 
-function resetPanelsToDefault() {
-    const inspectorSection = document.getElementById('inspector-section');
-    const chartsSection = document.getElementById('charts-section');
-    const logsSection = document.getElementById('logs-section');
-    
-    // Expand only inspector
-    [inspectorSection, chartsSection, logsSection].forEach(section => {
-        const icon = section.querySelector('.toggle-icon');
-        const header = section.querySelector('.panel-header');
-        
-        if (section.id === 'inspector-section') {
-            section.classList.add('expanded');
-            header.classList.add('active');
-        } else {
-            section.classList.remove('expanded');
-            header.classList.remove('active');
+// Export App button handler
+const btnExportApp = document.getElementById('btn-export-app');
+if (btnExportApp) {
+    btnExportApp.onclick = async () => {
+        if (!isSaved) {
+            alert("请先保存文件后再导出应用。");
+            return;
         }
-    });
+        
+        const data = {
+            filename: currentFileName,
+            graph: graph.serialize()
+        };
+        
+        try {
+            const res = await fetch("/api/export_app", { 
+                method: "POST", 
+                headers: { "Content-Type": "application/json" }, 
+                body: JSON.stringify(data) 
+            });
+            const j = await res.json();
+            if (j.ok) {
+                // Download the zip or script
+                // For now, assume it returns a single python script for simplicity
+                const blob = new Blob([j.code], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = j.filename || "inference_app.py";
+                a.click();
+                URL.revokeObjectURL(url);
+                alert("应用脚本已生成并下载: " + j.filename);
+            } else {
+                alert("导出失败: " + j.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("导出请求失败: " + e);
+        }
+    };
 }
 
-// Initialize panel system on DOM load
+// Initialize system on DOM load
 document.addEventListener('DOMContentLoaded', () => {
     initChart();
-    setupPanelToggles();
-    addPanelTooltips();
-    setupPanelKeyboardShortcuts();
+    setupTabs();
+    setupKeyboardShortcuts();
+    fetchSubgraphs();
     
-    // Add visual feedback for panel interactions
-    const headers = document.querySelectorAll('.panel-header');
-    headers.forEach(header => {
-        header.addEventListener('mouseenter', () => {
-            if (!header.parentElement.classList.contains('expanded')) {
-                header.style.transform = 'translateX(2px)';
-            }
-        });
-        
-        header.addEventListener('mouseleave', () => {
-            header.style.transform = 'translateX(0)';
-        });
-    });
+    const btnNewEmbedded = document.getElementById("btn-new-embedded-subgraph");
+    if (btnNewEmbedded) {
+        btnNewEmbedded.onclick = () => {
+            const node = LiteGraph.createNode("graph/embedded_subgraph");
+            node.pos = [Math.random()*400+100, Math.random()*300+100];
+            canvas.graph.add(node);
+        };
+    }
+
+    // Initial state
+    saveState();
 });
 
 // Initialize file status

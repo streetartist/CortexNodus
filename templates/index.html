@@ -18,6 +18,7 @@
         <button id="btn-save-as">另存为</button>
         <button id="btn-run">运行训练</button>
         <button id="btn-gen">生成脚本</button>
+        <button id="btn-export-app">导出应用</button>
         <button id="btn-autolayout">自动布局</button>
         <input type="file" id="open-file-input" style="display:none" accept=".json">
       </div>
@@ -117,34 +118,57 @@
       </section>
 
       <aside class="inspector">
-        <!-- 属性面板部分 - 默认展开，优先级最高 -->
-        <div id="inspector-section" class="panel-section flex-fill">
-            <div class="panel-header">属性 <span class="toggle-icon">▶</span></div>
-            <div class="panel-content">
+        <div class="tabs-header">
+            <button class="tab-btn active" data-tab="inspector-tab">属性</button>
+            <button class="tab-btn" data-tab="charts-tab">图表</button>
+            <button class="tab-btn" data-tab="logs-tab">日志</button>
+            <button class="tab-btn" data-tab="viz-tab">可视化</button>
+        </div>
+        
+        <div class="tabs-content">
+            <!-- 属性面板 -->
+            <div id="inspector-tab" class="tab-pane active">
                 <div id="inspector"></div>
             </div>
-        </div>
 
-        <!-- 图表部分 - 默认折叠，训练时自动展开 -->
-        <div id="charts-section" class="panel-section">
-            <div class="panel-header">训练图表 <span class="toggle-icon">▶</span></div>
-            <div class="panel-content">
-                <div id="charts-container" style="height: 100%; padding: 8px;">
-                    <canvas id="training-chart"></canvas>
+            <!-- 图表面板 -->
+            <div id="charts-tab" class="tab-pane">
+                <div id="charts-container" style="height: 100%; padding: 8px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="flex: 1; min-height: 0; position: relative;">
+                        <canvas id="loss-chart"></canvas>
+                    </div>
+                    <div style="flex: 1; min-height: 0; position: relative;">
+                        <canvas id="acc-chart"></canvas>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- 日志部分 - 默认折叠，训练时自动展开 -->
-        <div id="logs-section" class="panel-section">
-            <div class="panel-header">训练日志 <span class="toggle-icon">▶</span></div>
-            <div class="panel-content">
+            <!-- 日志面板 -->
+            <div id="logs-tab" class="tab-pane">
                 <div id="mini-log-container" style="display: flex; flex-direction: column; height: 100%;">
                     <div style="padding: 8px;">
                         <button id="btn-stop-training" style="width: 100%; background: #444; color: #aaa; border: none; padding: 8px 12px; border-radius: 4px; cursor: not-allowed; font-size: 13px; font-weight: bold;" disabled>终止训练</button>
                         <div id="training-status-bar" style="font-size: 12px; color: #888; margin-top: 8px; font-family: monospace; text-align: center; padding: 4px; background: #2a2a2a; border-radius: 3px; border: 1px solid #444;">准备就绪</div>
                     </div>
                     <div id="mini-log" style="flex: 1; overflow-y: auto; background: #111; padding: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 11px; color: #ccc; border: 1px solid #333; margin: 0 8px 8px 8px; border-radius: 4px;"></div>
+                </div>
+            </div>
+
+            <!-- 可视化面板 -->
+            <div id="viz-tab" class="tab-pane">
+                <div id="viz-container" style="padding: 8px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%;">
+                    <div class="viz-item">
+                        <h4>损失曲线</h4>
+                        <img id="viz-loss-curve" src="" alt="等待训练..." style="width: 100%; border-radius: 4px; display: none;">
+                    </div>
+                    <div class="viz-item">
+                        <h4>混淆矩阵</h4>
+                        <img id="viz-confusion-matrix" src="" alt="等待训练..." style="width: 100%; border-radius: 4px; display: none;">
+                    </div>
+                    <div class="viz-item">
+                        <h4>预测样本</h4>
+                        <img id="viz-predictions" src="" alt="等待训练..." style="width: 100%; border-radius: 4px; display: none;">
+                    </div>
                 </div>
             </div>
         </div>
