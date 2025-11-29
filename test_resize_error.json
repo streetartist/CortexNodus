@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MNIST",
+      "properties": {"batch_size": 64}
+    },
+    {
+      "id": 2,
+      "type": "Resize",
+      "properties": {} 
+    },
+    {
+      "id": 3,
+      "type": "Loss",
+      "properties": {"kind": "CrossEntropy"}
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "any"],
+    [2, 2, 0, 3, 0, "any"]
+  ]
+}

@@ -351,6 +351,8 @@ def build_dense(props: Dict[str, Any], ctx: LayerContext) -> nn.Module:
     # For now, let's just return Linear. The user or the graph parser should handle Flatten.
     # BUT, to make it easy for users, we can return a Sequential(Flatten, Linear) if we detect we are in 2D mode.
     
+    auto_flatten = bool(props.get("auto_flatten", True))
+    
     layers = []
     # Heuristic: if spatial size is valid (from convs), we might need to flatten.
     # But ctx.out_channels tracks features.
@@ -370,7 +372,7 @@ def build_dense(props: Dict[str, Any], ctx: LayerContext) -> nn.Module:
     out_feat = int(props.get("out_features", ctx.num_classes))
     
     # If we have spatial dims, we likely need to flatten.
-    if ctx.out_spatial_size > 0:
+    if ctx.out_spatial_size > 0 and auto_flatten:
         layers.append(nn.Flatten())
         ctx.out_spatial_size = 0 # Flattened
         ctx.out_channels = in_feat
@@ -551,7 +553,10 @@ def build_concat(props: Dict[str, Any], ctx: LayerContext) -> nn.Module:
 
 @register_layer("Resize")
 def build_resize(props: Dict[str, Any], ctx: LayerContext) -> nn.Module:
-    size_val = props.get("size", 28)
+    if "size" not in props:
+        raise ValueError("Resize layer requires 'size' property.")
+        
+    size_val = props["size"]
     mode = props.get("mode", "bilinear")
     align_corners = bool(props.get("align_corners", False))
     
@@ -573,8 +578,7 @@ def build_resize(props: Dict[str, Any], ctx: LayerContext) -> nn.Module:
         size = tuple(map(int, size_val))
         ctx.out_spatial_size = size[0]
     else:
-        size = (28, 28)
-        ctx.out_spatial_size = 28
+        raise ValueError(f"Invalid type for size in Resize layer: {type(size_val)}")
 
     class ResizeLayer(nn.Module):
         def __init__(self, size, mode, align_corners):
