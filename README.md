@@ -9,7 +9,6 @@ CortexNodus 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台
 - `static/style.css`：暗色主题 UI 样式。
 - `static/designer.js`：LiteGraph 画布逻辑、节点注册、Inspector、状态轮询。
 - `ml/designer.py`：画布 JSON 解析器，负责将节点拓扑转换为 `DesignerPlan`。
-- `docs/UX_PLAN.md`：LabVIEW 风格界面设计方案。
 
 ## 快速开始（Windows PowerShell）
 
