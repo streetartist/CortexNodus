@@ -53,7 +53,7 @@ python app.py
 
 ### 数据集支持
 - **图像数据集**：MNIST、Fashion-MNIST、CIFAR-10
-- **文本数据集**：WikiText-2、WikiText-103、Penn Treebank
+- **文本数据集**(需要自行下载)：WikiText-2、WikiText-103、Penn Treebank
 - **自定义数据集**：支持 ImageFolder、CSV、Numpy、文本文件
 
 ## 示例文件
