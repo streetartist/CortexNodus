@@ -1159,7 +1159,7 @@ document.getElementById("btn-download").onclick = () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "graph_lab_design.json";
+  a.download = "cortex_nodus_design.json";
   a.click();
   URL.revokeObjectURL(url);
 };

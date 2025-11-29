@@ -1,6 +1,6 @@
 # GPT 模型训练指南
 
-本指南介绍如何在 GraphLab Designer 中构建和训练 GPT 风格的语言模型。
+本指南介绍如何在 CortexNodus 中构建和训练 GPT 风格的语言模型。
 
 ## 快速开始
 
