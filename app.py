@@ -207,6 +207,34 @@ def run_training_thread(plan: Dict[str, Any], filename: str = None):
             main_target_type = main_head_cfg.get("target", "Label")
             main_src_id = str(plan['model']['connections'].get(main_nid, [])[0])
 
+            # Try to find the main criterion for the primary train config.
+            # build_optim_loss_from_plan can store criterions with int or str keys,
+            # so try both. Fallback to first available criterion or CrossEntropyLoss.
+            main_crit = None
+            try:
+                main_nid_raw = main_head_cfg.get("node_id")
+                # Try exact type first
+                main_crit = criterions.get(main_nid_raw)
+                if main_crit is None:
+                    # Try string form
+                    main_crit = criterions.get(str(main_nid_raw))
+                if main_crit is None and len(criterions) > 0:
+                    main_crit = next(iter(criterions.values()))
+            except Exception:
+                main_crit = nn.CrossEntropyLoss()
+
+            # Extract underlying test dataset object (for classes etc.)
+            test_ds = None
+            try:
+                test_ds_obj = test_loader.dataset
+                from torch.utils.data.dataset import Subset
+                if isinstance(test_ds_obj, Subset) and hasattr(test_ds_obj, 'dataset'):
+                    test_ds = test_ds_obj.dataset
+                else:
+                    test_ds = test_ds_obj
+            except Exception:
+                test_ds = None
+
             for batch_idx, (x, y) in enumerate(train_loader):
                 if state.stop_requested:
                     break

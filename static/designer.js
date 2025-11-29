@@ -77,16 +77,21 @@ function updateEmbeddedSubgraphList() {
         div.style.padding = "4px 8px";
         div.style.borderBottom = "1px solid #444";
         
-        const btn = document.createElement("button");
-        btn.className = "node";
-        btn.textContent = name;
-        btn.style.flex = "1";
-        btn.style.textAlign = "left";
-        btn.style.background = "none";
-        btn.style.border = "none";
-        btn.style.color = "#ccc";
-        btn.style.cursor = "pointer";
-        btn.onclick = () => {
+        div.style.cursor = "pointer";
+        div.style.fontSize = "12px";
+
+        const span = document.createElement("span");
+        span.innerText = name;
+        span.style.cursor = "pointer";
+        span.style.fontSize = "12px";
+        span.style.color = "#4CAF50";
+        span.style.flex = "1";
+        span.style.textAlign = "left";
+        span.onmouseover = () => { span.style.textDecoration = "underline"; };
+        span.onmouseout = () => { span.style.textDecoration = "none"; };
+        // click creates a node instance on the canvas
+        span.onclick = (e) => {
+            e.stopPropagation();
             const node = LiteGraph.createNode("graph/embedded_subgraph");
             node.pos = [Math.random()*400+100, Math.random()*300+100];
             node.properties.template_name = name;
@@ -96,6 +101,12 @@ function updateEmbeddedSubgraphList() {
             node.updateTitle();
             node.updateSlots();
             canvas.graph.add(node);
+        };
+        // right-click should open the editor for this embedded template
+        span.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openEmbeddedSubgraphEditor(name);
         };
         
         const btnDelete = document.createElement("button");
@@ -115,7 +126,7 @@ function updateEmbeddedSubgraphList() {
             }
         };
         
-        div.appendChild(btn);
+        div.appendChild(span);
         div.appendChild(btnDelete);
         container.appendChild(div);
     });
@@ -127,13 +138,21 @@ function extractEmbeddedSubgraphs(json) {
         Object.assign(embeddedSubgraphTemplates, json.embedded_templates);
     }
 
-    // 2. Scan nodes for any templates (backward compatibility)
+    // 2. Scan nodes for any templates (backward compatibility & legacy support)
     if (json.nodes) {
         json.nodes.forEach(n => {
+            // Handle new EmbeddedSubgraphNode
             if (n.type === "graph/embedded_subgraph" && n.properties && n.properties.template_name && n.subgraph) {
-                // Only add if not already present to avoid overwriting newer definitions
                 if (!embeddedSubgraphTemplates[n.properties.template_name]) {
                     embeddedSubgraphTemplates[n.properties.template_name] = n.subgraph;
+                }
+            }
+            // Handle legacy SubgraphNode (convert to template if it has a title and subgraph data)
+            else if (n.type === "graph/subgraph" && n.title && n.title !== "Subgraph" && n.properties && n.properties.subgraph) {
+                // Use title as template name
+                const name = n.title;
+                if (!embeddedSubgraphTemplates[name]) {
+                    embeddedSubgraphTemplates[name] = n.properties.subgraph;
                 }
             }
         });
@@ -446,6 +465,16 @@ EmbeddedSubgraphNode.prototype.getExtraMenuOptions = function(canvas, options) {
         }
     ];
 }
+
+EmbeddedSubgraphNode.prototype.onPropertyChanged = function(name, value) {
+    if (name == "template_name") {
+        this.updateTitle();
+        // Auto-save as template when name changes
+        if (value && value.trim() !== "") {
+            this.saveTemplate();
+        }
+    }
+};
 
 EmbeddedSubgraphNode.prototype.updateTitle = function() {
     if (this.properties.template_name) {
@@ -1811,6 +1840,7 @@ LiteGraph.registerNodeType("graph/subgraph_ref", SubgraphRefNode);
 // --- Subgraph Library UI Logic ---
 
 var currentSubgraphName = null;
+var currentEmbeddedSubgraph = null; // currently editing embedded template name
 
 function fetchSubgraphs() {
     fetch("/api/subgraphs")
@@ -1838,6 +1868,7 @@ function renderSubgraphList(files) {
         var span = document.createElement("span");
         span.innerText = f.replace(".json", "");
         span.style.cursor = "pointer";
+        span.style.fontSize = "12px";
         span.style.color = "#4CAF50";
         span.onmouseover = () => {
             span.style.textDecoration = "underline";
@@ -1939,6 +1970,37 @@ function openSubgraphEditor(filename) {
         });
 }
 
+// Open an embedded subgraph template in the editor (client-side editing)
+function openEmbeddedSubgraphEditor(name) {
+    if (!embeddedSubgraphTemplates[name]) {
+        alert("未找到内联模板: " + name);
+        return;
+    }
+
+    currentEmbeddedSubgraph = name;
+
+    const subgraph = new LGraph();
+    subgraph.configure(JSON.parse(JSON.stringify(embeddedSubgraphTemplates[name])));
+    canvas.setGraph(subgraph);
+
+    var bc = document.getElementById("breadcrumbs");
+    if (bc) {
+        bc.style.display = "block";
+        bc.innerHTML = "";
+        var btnBack = document.createElement("button");
+        btnBack.innerText = "← Back to Main";
+        btnBack.onclick = loadMainGraph;
+        bc.appendChild(btnBack);
+
+        var span = document.createElement("span");
+        span.innerText = " Editing inline template: " + name;
+        span.style.marginLeft = "10px";
+        bc.appendChild(span);
+    }
+
+    document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "block");
+}
+
 async function autoSaveCurrentSubgraph() {
     if (currentSubgraphName) {
         try {
@@ -1953,13 +2015,42 @@ async function autoSaveCurrentSubgraph() {
             console.error("自动保存子图失败:", error);
         }
     }
+    // Also save embedded template edits if editing one
+    if (currentEmbeddedSubgraph) {
+        try {
+            const currentGraph = canvas.graph;
+            const data = currentGraph.serialize();
+            embeddedSubgraphTemplates[currentEmbeddedSubgraph] = data;
+            updateEmbeddedSubgraphList();
+            console.log("页面关闭前自动保存内联子图: " + currentEmbeddedSubgraph);
+        } catch (error) {
+            console.error("页面关闭前自动保存内联子图失败:", error);
+        }
+    }
+}
+
+async function autoSaveCurrentEmbeddedSubgraph() {
+    if (currentEmbeddedSubgraph) {
+        try {
+            const currentGraph = canvas.graph;
+            const data = currentGraph.serialize();
+            // Save into in-memory templates and refresh list
+            embeddedSubgraphTemplates[currentEmbeddedSubgraph] = data;
+            updateEmbeddedSubgraphList();
+            console.log("内联子图已自动保存: " + currentEmbeddedSubgraph);
+        } catch (error) {
+            console.error("自动保存内联子图失败:", error);
+        }
+    }
 }
 
 async function loadMainGraph() {
-    // 先自动保存当前子图
+    // 先自动保存当前正在编辑的子图（支持 server-side 与 embedded）
     await autoSaveCurrentSubgraph();
-    
+    await autoSaveCurrentEmbeddedSubgraph();
+
     currentSubgraphName = null;
+    currentEmbeddedSubgraph = null;
     document.getElementById("breadcrumbs").style.display = "none";
     document.querySelectorAll(".subgraph-only").forEach(el => el.style.display = "none");
     
@@ -1997,6 +2088,15 @@ async function loadMainGraph() {
 
 // We will use a unified handler that checks context.
 document.getElementById("btn-save").onclick = async () => {
+    // If we are editing an embedded template (client-side), save it back into templates
+    if (currentEmbeddedSubgraph) {
+        const currentGraph = canvas.graph;
+        const subgraphData = currentGraph.serialize();
+        embeddedSubgraphTemplates[currentEmbeddedSubgraph] = subgraphData;
+        updateEmbeddedSubgraphList();
+        alert("内联子图已保存: " + currentEmbeddedSubgraph);
+        return;
+    }
     // If we are editing a server-side subgraph
     if (currentSubgraphName) {
         const currentGraph = canvas.graph;
