@@ -13,7 +13,7 @@ CortexNodus 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台
 ## 快速开始（Windows PowerShell）
 
 ```powershell
-cd "d:\新建文件夹 (2)"
+cd "d:\CortexNodus"
 python -m venv .venv
 ".\.venv\Scripts\Activate.ps1"
 pip install -r requirements.txt
