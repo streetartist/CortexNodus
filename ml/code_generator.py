@@ -645,13 +645,70 @@ def load_model(model_path='best_model.pt'):
     global model
     if not os.path.exists(model_path):
         return False
-    
+
     try:
         model = Model().to(device)
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        model.eval()
-        print(f"Model loaded from {{model_path}}")
-        return True
+        loaded = torch.load(model_path, map_location=device)
+
+        # If checkpoint is a dict with a "state_dict" key (typical trainer checkpoints)
+        if isinstance(loaded, dict) and 'state_dict' in loaded and isinstance(loaded['state_dict'], dict):
+            state = loaded['state_dict']
+        elif isinstance(loaded, dict):
+            state = loaded
+        else:
+            # Might be a raw object or not a dict - try direct load
+            try:
+                model.load_state_dict(loaded)
+                model.eval()
+                print(f"Model loaded from {{model_path}}")
+                return True
+            except Exception as e:
+                print(f"Error loading model: {{e}}")
+                return False
+
+        # First try a direct load
+        try:
+            model.load_state_dict(state)
+            model.eval()
+            print(f"Model loaded from {{model_path}}")
+            return True
+        except Exception as e:
+            # Attempt to remap common alternative key patterns from the runtime
+            # that saves modules under a 'layers' ModuleDict / Sequential.
+            try:
+                new_state = {{}}
+                for k, v in state.items():
+                    key = k
+                    # strip DataParallel/module prefix
+                    if key.startswith('module.'):
+                        key = key[len('module.') :]
+
+                    if key.startswith('layers.'):
+                        rest = key[len('layers.') :].lstrip('.')
+                        parts = rest.split('.')
+                        if parts:
+                            idx = parts[0]
+                            tail = parts[1:]
+                            # If immediate child is numeric (Sequential index) drop it.
+                            if tail and tail[0].isdigit():
+                                tail = tail[1:]
+
+                            new_key = 'layer_' + idx
+                            if tail:
+                                new_key = new_key + '.' + '.'.join(tail)
+                            new_state[new_key] = v
+                        else:
+                            new_state[key] = v
+                    else:
+                        new_state[key] = v
+
+                model.load_state_dict(new_state, strict=False)
+                model.eval()
+                print(f"Model loaded from {{model_path}} (remapped keys)")
+                return True
+            except Exception as e2:
+                print(f"Error loading model even after remapping: {{e2}} (original: {{e}})")
+                return False
     except Exception as e:
         print(f"Error loading model: {{e}}")
         return False
@@ -997,6 +1054,55 @@ def _generate_helper_methods(needed_helpers: Set[str]) -> str:
         return GPTBlock(d_model, nhead, dim_feedforward, dropout)""")
 
     return "".join(methods)
+
+
+def _remap_layers_state_dict_for_named_layers(state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Remap a state_dict saved under a ModuleDict/Sequential named 'layers'
+    into keys that match attributes named like 'layer_<id>'.
+
+    Examples this handles:
+      - 'layers.2.weight' -> 'layer_2.weight'
+      - 'layers.5.1.weight' -> 'layer_5.weight'  (drops inner sequential index)
+      - 'module.layers.3.bias' -> 'layer_3.bias'  (removes module. prefix)
+
+    This is used for robustness when loading checkpoints created by a different
+    runtime that used a ModuleDict/Sequential named 'layers' instead of
+    top-level attributes named 'layer_<id>'.
+    """
+    remapped = {}
+    for k, v in state_dict.items():
+        key = k
+        # strip common wrappers like DataParallel 'module.' prefix
+        if key.startswith("module."):
+            key = key[len("module."):]
+
+        if key.startswith("layers."):
+            rest = key[len("layers."):].lstrip('.')
+            parts = rest.split('.')
+            if not parts:
+                # unlikely, keep original
+                remapped[key] = v
+                continue
+
+            layer_index = parts[0]
+            tail = parts[1:]
+
+            # If the next part looks like a numeric index coming from a Sequential
+            # inside layers (e.g. layers.5.1.weight) drop the numeric part and
+            # keep the rest (we assume the inner module's params correspond to the
+            # parent layer attribute, e.g. layer_5.weight).
+            if tail and tail[0].isdigit():
+                tail = tail[1:]
+
+            new_key = f"layer_{layer_index}"
+            if tail:
+                new_key = new_key + "." + ".".join(tail)
+
+            remapped[new_key] = v
+        else:
+            remapped[key] = v
+
+    return remapped
 
 
 def _generate_dataset_code(dataset_name: str, batch_size: int) -> str:

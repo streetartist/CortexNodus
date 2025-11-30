@@ -2,7 +2,7 @@
 
 ## 概述
 
-项目现在可以生成**纯 PyTorch 训练脚本**，而不是依赖 JSON 解析的程序。生成的代码是独立的、可读的标准 PyTorch 代码。
+项目可以生成**纯 PyTorch 训练脚本**，而不是依赖 JSON 解析的程序。生成的代码是独立的、可读的标准 PyTorch 代码。
 
 ## 主要改进
 
@@ -51,16 +51,6 @@ class Model(nn.Module):
 1. 在 Web 界面中设计你的神经网络
 2. 点击 "生成代码" 按钮
 3. 代码将保存到 `train_generated.py`
-
-### 2. 通过命令行生成
-
-```bash
-# 运行测试脚本（使用示例图）
-python test_code_gen.py
-
-# 生成的代码保存在 train_generated.py
-python train_generated.py
-```
 
 ### 3. 编程方式生成
 
@@ -134,7 +124,7 @@ with open('my_model.py', 'w') as f:
 - 全连接层的输入/输出维度
 
 ### 智能 Flatten 处理
-当遇到第一个全连接层时，如果输入还是 2D/3D 特征图，会自动插入 flatten 操作。
+当遇到第一个全连接层时，如果输入还是 2D/3D 特征图，默认会自动插入 flatten 操作。
 
 ### 优化器和损失函数支持
 - 优化器：Adam, SGD, AdamW

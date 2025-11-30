@@ -1,126 +1,202 @@
 # CortexNodus
 
-CortexNodus 是一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台，可通过拖拽方式构建完整的深度学习流水线（数据 → 模型 → 训练 → 评估），并自动在后端生成 PyTorch 代码并执行训练。目前已内置 MNIST、Fashion-MNIST、CIFAR-10 等常见图片数据集，能够图形化训练一个数字识别模型，也可以扩展为更多同等复杂度的网络。
+一个基于 Flask + LiteGraph.js 的可视化 AI 训练工作台，支持通过拖拽方式构建神经网络架构并生成 PyTorch 训练代码。
 
-## 目录结构
+## 🌟 主要特性
 
-- `app.py`：Flask 服务，负责解析画布、构建 PyTorch 模型与训练循环、生成脚本。
-- `templates/index.html`：主界面骨架。
-- `static/style.css`：暗色主题 UI 样式。
-- `static/designer.js`：LiteGraph 画布逻辑、节点注册、Inspector、状态轮询。
+### 可视化模型设计
+- **拖拽式界面**：基于 LiteGraph.js 的直观节点编辑器
+- **可视化连接**：节点间可视化连接
+- **形状推断**：自动计算和显示张量维度变化
+- **子图支持**：创建可重用的模块化组件
 
-Subgraph inspector improvements
---------------------------------
+### 丰富的神经网络层支持
+- **基础层**：Conv2D, Linear, MaxPool2D, AvgPool2D, Flatten, Dropout
+- **激活函数**：ReLU, GELU, Sigmoid, Tanh, Softmax
+- **归一化层**：BatchNorm2D, LayerNorm
+- **嵌入层**：Embedding
+- **Transformer 组件**：MultiHeadAttention, GPTBlock, TransformerEncoder
+- **损失函数**：CrossEntropyLoss, MSELoss
+- **优化器**：Adam, SGD
 
-- 点击子图块现在会在右侧 Inspector 中正确显示属性（包括内联模板名template_name / 节点名称）。
-- 在 Inspector 修改内联子图名称会同步更新侧边的“内联子图”列表（Embedded Templates），并自动保存模板。
-- 另外，为兼容性，子图引用节点（Subgraph Ref）和老式 Subgraph 节点现在也会在被选中时自动显示属性面板。
+### 代码生成与训练
+- **PyTorch 代码生成**：生成完整的训练脚本
+- **实时训练监控**：通过 WebSocket 实时显示训练状态
+- **训练可视化**：损失曲线、混淆矩阵、预测结果图表
+- **推理应用导出**：生成独立的推理应用
 
-手工验证（浏览器）
---------------------------------
+### 数据处理
+- **内置数据集**：内置对 MNIST 手写数字数据集等数据集的支持
+- **数据加载器**：自动处理数据预处理和批次管理
+- **自定义数据**：支持上传自定义数据集
 
-1. 在画布点击任意子图节点（内联/引用/传统），右侧 Inspector 会显示节点属性。
-2. 修改“Node Name”字段：
-  - 内联子图 (Inline/Embedded Subgraph) 会把名称写入 `template_name` 并同步到侧边栏模板列表。
-  - 引用子图 (Subgraph Ref) 修改名称会尝试加载对应文件名（如存在）用于引用。
+## 🚀 快速开始
 
-- `ml/designer.py`：画布 JSON 解析器，负责将节点拓扑转换为 `DesignerPlan`。
+### 环境要求
+- Python 3.8+
+- PyTorch
+- Flask
+- 其他依赖见 requirements.txt
 
-## 快速开始（Windows PowerShell）
+### 安装步骤
 
-```powershell
-cd "d:\CortexNodus"
-python -m venv .venv
-".\.venv\Scripts\Activate.ps1"
+1. **克隆项目**
+```bash
+git clone https://github.com/streetartist/CortexNodus.git
+cd CortexNodus
+```
+
+2. **安装依赖**
+```bash
 pip install -r requirements.txt
+```
+
+3. **启动应用**
+```bash
 python app.py
 ```
 
-启动后访问 `http://localhost:5000` 即可打开画布。
+4. **访问界面**
+打开浏览器访问 `http://localhost:5000`
 
-## 使用步骤
+## 📖 使用指南
 
-1. **拖拽节点**：在左侧库中选择数据源、卷积层、池化层、全连接层、损失函数、优化器以及训练控制器，拖入画布后用连线连接形成顺序拓扑。
-2. **配置属性**：选中任意节点，右侧 Inspector 会展示可编辑属性（如卷积通道数、学习率等），修改后实时保存。
-3. **运行训练**：点击顶部“运行训练”按钮，服务端会解析当前画布、构建 PyTorch `nn.Sequential` 模型，随后后台线程执行训练。状态卡片、日志面板会实时显示 epoch、损失、验证准确率。
-4. **测试/部署**：训练完成后可点击“测试集评估”以及“下载模型”，或选择“生成 PyTorch 脚本”导出独立训练脚本。
+### 基本工作流程
 
-## 功能特性
+1. **设计模型架构**
+   - 从右侧面板选择神经网络层
+   - 拖拽节点到画布
+   - 连接节点构建数据流
 
-- LiteGraph 画布支持拖拽、连线、属性面板以及本地/服务端双重保存。
-- 支持多数据集、动态模型构建、Adam/SGD/AdamW 优化器、CrossEntropy/MSE/SmoothL1 等损失。
-- 训练过程在后台线程运行，提供实时状态、日志、最佳权重保存、停止控制。
-- **一键生成纯 PyTorch 训练脚本**：生成独立的、可读的标准 PyTorch 代码，无需额外依赖即可运行。
-- **全面支持 Transformer 和 GPT 架构**：包括 Embedding、位置编码、多头注意力、Transformer 编码器/解码器、GPT Block 等。
+2. **配置参数**
+   - 点击节点设置层参数
 
-## 支持的模型类型
+3. **生成代码 （可选）**
+   - 点击"生成代码"按钮
+   - 系统生成完整的 PyTorch 训练脚本
 
-### 计算机视觉
-- CNN（卷积神经网络）：支持各种卷积层、池化层、归一化层
-- ResNet、DenseNet 等通过子图支持
-- 图像分类、目标检测基础架构
+4. **训练模型**
+   - 点击"开始训练"
+   - 实时监控训练进度和指标
 
-### 自然语言处理
-- **Transformer 编码器**：用于文本分类、命名实体识别等
-- **Transformer 解码器**：用于文本生成
-- **GPT 架构**：通过 GPT Block 构建语言模型
-- 支持词嵌入（Embedding）和位置编码（Positional Encoding）
+5. **查看结果**
+   - 训练完成后自动显示可视化结果
+   - 包括损失曲线、混淆矩阵等
 
-### 数据集支持
-- **图像数据集**：MNIST、Fashion-MNIST、CIFAR-10
-- **文本数据集**(需要自行下载)：WikiText-2、WikiText-103、Penn Treebank
-- **自定义数据集**：支持 ImageFolder、CSV、Numpy、文本文件
+### 支持的节点类型
 
-## 示例文件
+#### 数据层
+- **Input**: 输入数据节点
+- **Target**: 目标标签节点
 
-- `example_graph.json`：基础 MNIST 卷积神经网络示例
-- `gpt_example.json`：GPT 语言模型训练示例，包含：
-  - Token Embedding 层
-  - 位置编码
-  - 3 层 GPT Block（带自注意力机制）
-  - Layer Normalization
-  - 输出投影层
-  
-## 使用 GPT 示例
+#### 神经网络层
+- **Conv2D**: 二维卷积层
+- **Linear**: 全连接层
+- **MaxPool2D**: 二维最大池化
+- **AvgPool2D**: 二维平均池化
+- **Flatten**: 数据展平层
+- **Dropout**: 随机失活层
+- **BatchNorm2D**: 二维批归一化
+- **LayerNorm**: 层归一化
+- **Embedding**: 嵌入层
 
-```bash
-# 导入 gpt_example.json 到界面
-# 或手动构建以下结构：
-# WikiText-2 → Embedding → Positional Encoding → GPT Block × 3 → LayerNorm → Linear → Loss
+#### 激活函数
+- **ReLU**: ReLU 激活函数
+- **GELU**: GELU 激活函数
+- **Sigmoid**: Sigmoid 激活函数
+- **Tanh**: Tanh 激活函数
+- **Softmax**: Softmax 激活函数
+
+#### Transformer 组件
+- **MultiHeadAttention**: 多头注意力机制
+- **GPTBlock**: GPT 风格的 Transformer 块
+- **TransformerEncoder**: Transformer 编码器
+
+#### 输出层
+- **CrossEntropyLoss**: 交叉熵损失函数
+- **MSELoss**: 均方误差损失函数
+
+## 🔧 高级功能
+
+### 子图系统
+- 创建可重用的模块化组件
+- 将复杂网络封装为单个节点
+- 支持子图的导入和导出
+
+### 实时训练监控
+- WebSocket 实时连接
+- 动态更新训练状态
+- 实时显示损失值和准确率
+
+### 代码导出
+- 生成独立的 Python 训练脚本
+- 支持推理应用导出
+- 包含完整的模型定义和训练逻辑
+
+## 📁 项目结构
+
+```
+CortexNodus/
+├── app.py                 # Flask 主应用
+├── ml/                    # 机器学习核心模块
+│   ├── designer.py        # 节点注册和模型构建
+│   ├── code_generator.py  # PyTorch 代码生成
+│   ├── data_loader.py     # 数据加载和处理
+│   └── visualization.py   # 训练可视化
+├── static/                # 静态资源
+│   ├── designer.js        # 前端节点编辑器
+│   ├── style.css          # 样式文件
+│   └── plots/             # 生成的图表
+├── templates/             # HTML 模板
+├── example/               # 示例配置
+├── subgraphs/             # 子图定义
+├── docs/                  # 文档
+└── test/                  # 测试文件
 ```
 
-GPT 模型配置说明：
-- **d_model**: 模型维度（默认 128）
-- **nhead**: 注意力头数（默认 4-8）
-- **dim_feedforward**: 前馈网络维度（默认 512）
-- **dropout**: Dropout 比例（默认 0.1）
-- **num_embeddings**: 词汇表大小
-- **embedding_dim**: 词嵌入维度
+## 🎯 示例项目
 
-## 代码生成（警告：目前不是所有能够运行的模型都能生成代码）
+### CNN MNIST 分类器
+1. 创建 Input 节点 (1, 28, 28)
+2. 添加 Conv2D → ReLU → MaxPool2D
+3. 重复卷积块
+4. 添加 Flatten → Linear → CrossEntropyLoss
+5. 连接 Target 节点
+6. 生成代码并开始训练
 
-项目现在支持生成**纯 PyTorch 代码**，而不是依赖 JSON 解析的程序：
+### Transformer 模型
+1. 使用 Embedding 层处理输入
+2. 添加 MultiHeadAttention 层
+3. 使用 GPTBlock 构建 Transformer 块
+4. 添加输出层和损失函数
 
-```bash
-# 使用示例生成代码
-python test_code_gen.py
+## 🤝 贡献指南
 
-# 运行生成的代码
-python train_generated.py
-```
+欢迎提交 Issue 和 Pull Request！
 
-生成的代码特点：
-- ✅ 标准 PyTorch `nn.Module` 类定义
-- ✅ 完整的训练和验证循环
-- ✅ 无需额外依赖，可独立运行
-- ✅ 自动形状推断和维度计算
-- ✅ 可读性强，易于理解和修改
+### 开发环境设置
+1. Fork 项目
+2. 创建功能分支
+3. 提交更改
+4. 发起 Pull Request
 
-详细文档请参考：[CODE_GENERATION.md](docs/CODE_GENERATION.md)
+## 📄 许可证
 
-## 后续可扩展点
+本项目采用 GPL-3.0 许可证 - 详见 [LICENSE](LICENSE) 文件
 
-- 增加更多预训练模型支持（BERT、T5 等）
-- 集成 WebSocket 推送，实时绘制训练曲线图
-- 支持多人协作/版本管理、超参搜索等高级功能
-- 添加模型导出为 ONNX 格式功能
+## 🔗 相关链接
+
+- [LiteGraph.js](https://github.com/jagenjo/litegraph.js) - 可视化节点编辑器
+- [PyTorch](https://pytorch.org/) - 深度学习框架
+- [Flask](https://flask.palletsprojects.com/) - Web 框架
+
+## 📝 更新日志
+
+### v0.4.1
+- 初始版本发布
+- 基础可视化模型设计功能
+- PyTorch 代码生成
+- 实时训练监控
+- 子图系统支持
+
+---
